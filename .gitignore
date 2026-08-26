@@ -1,0 +1,16 @@
+.env
+.env.local
+*.env
+node_modules/
+__pycache__/
+.venv/
+dist/
+.next/
+n8n-data/
+postgres-data/
+automation/n8n/credentials*.json
+!automation/n8n/credentials.example.json
+tests/evidencias/*
+!tests/evidencias/.gitkeep
+docs/entregables/~$*
+.DS_Store
