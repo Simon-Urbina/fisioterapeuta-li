@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+:root {
+  /* Base */
+  --color-white: #ffffff;
+  --color-mist: #f3f9fc;      /* pale blue-white background */
+  --color-sky-100: #e3f2f9;   /* soft surface */
+  --color-sky-300: #bfe3f2;   /* light blue - secondary accent */
+  --color-azure-500: #4fa9d1; /* mid blue - interactive */
+  --color-deep-600: #135f82;  /* deep blue - primary / CTA */
+  --color-deep-700: #0e4a66;  /* deep blue hover */
+  --color-ink-900: #10222b;   /* near-black navy - body text */
+  --color-ink-600: #3c5a66;   /* muted text */
+
+  --font-fraunces: "Fraunces", serif;
+  --font-inter: "Inter", sans-serif;
+  --font-display: var(--font-fraunces);
+  --font-body: var(--font-inter);
+}
+
+@theme inline {
+  --color-white: var(--color-white);
+  --color-mist: var(--color-mist);
+  --color-sky-100: var(--color-sky-100);
+  --color-sky-300: var(--color-sky-300);
+  --color-azure-500: var(--color-azure-500);
+  --color-deep-600: var(--color-deep-600);
+  --color-deep-700: var(--color-deep-700);
+  --color-ink-900: var(--color-ink-900);
+  --color-ink-600: var(--color-ink-600);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+}
+
+body {
+  background: var(--color-mist);
+  color: var(--color-ink-900);
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Inputs de formulario */
+.fisio-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-sky-300);
+  background: var(--color-white);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--color-ink-900);
+}
+.fisio-input:focus {
+  outline: none;
+  border-color: var(--color-deep-600);
+  box-shadow: 0 0 0 3px var(--color-sky-100);
+}
+
+/* Theming del calendario react-day-picker */
+.rdp-fisio {
+  --rdp-accent-color: var(--color-deep-600);
+  --rdp-accent-background-color: var(--color-sky-100);
+  --rdp-today-color: var(--color-deep-600);
+  --rdp-selected-border: none;
+  margin: 0;
+}
+
+/* Pulso suave para el hotspot activo de la silueta */
+@keyframes ping-slow {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  70% { transform: scale(1.8); opacity: 0; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+.animate-ping-slow {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: ping-slow 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Animaciones simples y reutilizables del sitio */
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 40s linear infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+.animate-pulse-soft {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: pulse-soft 3.5s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin-slow,
+  .animate-float,
+  .animate-pulse-soft,
+  .animate-fade-in {
+    animation: none;
+  }
+}
