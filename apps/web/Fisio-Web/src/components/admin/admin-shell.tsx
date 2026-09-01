@@ -7,6 +7,7 @@ import {
   History,
   LogOut,
 } from "lucide-react";
+import { BrandMark } from "@/components/site/brand-mark";
 
 const nav = [
   { href: "/admin/agenda", label: "Agenda", icon: CalendarDays },
@@ -27,8 +28,8 @@ export function AdminShell({
     <div className="flex min-h-screen bg-mist">
       <aside className="hidden w-60 shrink-0 flex-col justify-between border-r border-sky-100 bg-white p-6 sm:flex">
         <div>
-          <Link to="/" className="font-display text-lg text-ink-900">
-            Fisioterapeuta <span className="text-deep-600">Li</span>
+          <Link to="/">
+            <BrandMark size="sm" />
           </Link>
 
           <nav className="mt-10 flex flex-col gap-1">

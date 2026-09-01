@@ -3,10 +3,15 @@ import { Container } from "@/components/ui/container";
 
 export function Footer() {
   return (
-    <footer id="contacto" className="mt-auto bg-deep-600 text-white">
+    <footer id="contacto" className="gradient-bg mt-auto text-white">
       <Container className="grid gap-10 py-14 sm:grid-cols-3">
         <div>
-          <p className="font-display text-lg">Fisioterapeuta Li</p>
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 font-display text-sm font-bold">
+              Li
+            </div>
+            <p className="font-display text-lg">Fisioterapeuta Li</p>
+          </div>
           <p className="mt-3 max-w-xs text-sm text-sky-100">
             Sesiones de fisioterapia personalizadas para recuperar tu
             movimiento, a tu ritmo.
@@ -28,6 +33,11 @@ export function Footer() {
             <li>
               <Link to="/servicios" className="hover:text-white">
                 Servicios
+              </Link>
+            </li>
+            <li>
+              <Link to="/resenas" className="hover:text-white">
+                Reseñas
               </Link>
             </li>
             <li>

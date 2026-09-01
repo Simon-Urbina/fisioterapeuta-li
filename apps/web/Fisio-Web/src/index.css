@@ -1,21 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  /* Base */
-  --color-white: #ffffff;
-  --color-mist: #f3f9fc;      /* pale blue-white background */
-  --color-sky-100: #e3f2f9;   /* soft surface */
-  --color-sky-300: #bfe3f2;   /* light blue - secondary accent */
-  --color-azure-500: #4fa9d1; /* mid blue - interactive */
-  --color-deep-600: #135f82;  /* deep blue - primary / CTA */
-  --color-deep-700: #0e4a66;  /* deep blue hover */
-  --color-ink-900: #10222b;   /* near-black navy - body text */
-  --color-ink-600: #3c5a66;   /* muted text */
+  /* Escala de marca (nueva paleta azul, más profunda y con gradientes) */
+  --color-brand-50: #f0f7ff;
+  --color-brand-100: #e0effe;
+  --color-brand-200: #bae0fd;
+  --color-brand-300: #7cc8fc;
+  --color-brand-400: #36affa;
+  --color-brand-500: #0c94eb;
+  --color-brand-600: #0074ca;
+  --color-brand-700: #015da7;
+  --color-brand-800: #064f8a;
+  --color-brand-900: #0b4272;
+  --color-brand-950: #072a4b;
 
-  --font-fraunces: "Fraunces", serif;
-  --font-inter: "Inter", sans-serif;
-  --font-display: var(--font-fraunces);
-  --font-body: var(--font-inter);
+  /* Tokens semánticos que ya usan los componentes -- se remapean a la
+     escala de marca, así todo el sitio hereda la paleta nueva sin tener
+     que tocar cada archivo. */
+  --color-white: #ffffff;
+  --color-mist: var(--color-brand-50);
+  --color-sky-100: var(--color-brand-100);
+  --color-sky-300: var(--color-brand-300);
+  --color-azure-500: var(--color-brand-500);
+  --color-deep-600: var(--color-brand-700);
+  --color-deep-700: var(--color-brand-900);
+  --color-ink-900: #0f172a;   /* slate-900, texto de cuerpo */
+  --color-ink-600: #45596b;   /* texto muted con tinte azul */
+
+  --font-space-grotesk: "Space Grotesk", sans-serif;
+  --font-jakarta: "Plus Jakarta Sans", sans-serif;
+  --font-display: var(--font-space-grotesk);
+  --font-body: var(--font-jakarta);
 }
 
 @theme inline {
@@ -28,6 +43,18 @@
   --color-deep-700: var(--color-deep-700);
   --color-ink-900: var(--color-ink-900);
   --color-ink-600: var(--color-ink-600);
+
+  --color-brand-50: var(--color-brand-50);
+  --color-brand-100: var(--color-brand-100);
+  --color-brand-200: var(--color-brand-200);
+  --color-brand-300: var(--color-brand-300);
+  --color-brand-400: var(--color-brand-400);
+  --color-brand-500: var(--color-brand-500);
+  --color-brand-600: var(--color-brand-600);
+  --color-brand-700: var(--color-brand-700);
+  --color-brand-800: var(--color-brand-800);
+  --color-brand-900: var(--color-brand-900);
+  --color-brand-950: var(--color-brand-950);
 
   --font-display: var(--font-display);
   --font-body: var(--font-body);
@@ -130,4 +157,39 @@ h1, h2, h3, h4 {
   .animate-fade-in {
     animation: none;
   }
+}
+
+/* Utilidades del nuevo estilo: texto en gradiente, fondo en gradiente,
+   navbar con vidrio esmerilado */
+.gradient-text {
+  background: linear-gradient(
+    135deg,
+    var(--color-brand-950) 0%,
+    var(--color-brand-600) 55%,
+    var(--color-brand-400) 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-bg {
+  background: linear-gradient(
+    135deg,
+    var(--color-brand-900) 0%,
+    var(--color-brand-600) 100%
+  );
+}
+
+.glass-nav {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+@keyframes scroll-hint {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(6px); opacity: 0.5; }
+}
+.animate-scroll-hint {
+  animation: scroll-hint 1.8s ease-in-out infinite;
 }

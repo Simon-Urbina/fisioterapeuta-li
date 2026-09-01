@@ -16,10 +16,18 @@ import { cn } from "@/lib/utils";
 const steps = ["Servicio", "Fecha y hora", "Tus datos", "Confirmación"];
 
 const contactoSchema = z.object({
-  nombre: z.string().min(2, "Escribe tu nombre completo"),
-  email: z.string().email("Correo no válido"),
-  telefono: z.string().min(7, "Escribe un teléfono de contacto"),
-  notas: z.string().optional(),
+  nombre: z.string().trim().min(2, "Escribe tu nombre completo").max(80, "Máximo 80 caracteres"),
+  email: z.string().trim().email("Correo no válido").max(120, "Máximo 120 caracteres"),
+  telefono: z
+    .string()
+    .trim()
+    .min(7, "Escribe un teléfono de contacto")
+    .max(20, "Máximo 20 caracteres")
+    .regex(/^[0-9+()\s-]+$/, "Solo números, espacios y + ( ) -"),
+  notas: z.string().trim().max(300, "Máximo 300 caracteres").optional(),
+  // Honeypot: campo oculto para personas, si un bot lo rellena se
+  // descarta el envío antes de tocar el backend.
+  empresa: z.string().max(0, "").optional(),
 });
 
 type ContactoForm = z.infer<typeof contactoSchema>;
@@ -51,6 +59,9 @@ export function ReservaWizard() {
   }
 
   function onConfirmar(data: ContactoForm) {
+    // Honeypot: si el campo oculto viene relleno, es un bot -- se
+    // descarta silenciosamente sin llegar al backend.
+    if (data.empresa) return;
     // Aquí se envía el payload al backend/n8n:
     // { servicio: servicioSlug, fecha, hora, ...data }
     console.log("Reserva enviada:", { servicio: servicioSlug, fecha, hora, ...data });
@@ -172,11 +183,21 @@ export function ReservaWizard() {
 
         {step === 2 && (
           <form onSubmit={handleSubmit(onConfirmar)}>
+            <input
+              type="text"
+              {...register("empresa")}
+              tabIndex={-1}
+              autoComplete="off"
+              className="hidden"
+              aria-hidden="true"
+            />
             <p className="font-display text-xl text-ink-900">Tus datos</p>
             <div className="mt-6 grid gap-4">
               <Field label="Nombre completo" error={errors.nombre?.message}>
                 <input
                   {...register("nombre")}
+                  autoComplete="name"
+                  maxLength={80}
                   className="fisio-input"
                   placeholder="Ana Torres"
                 />
@@ -185,6 +206,8 @@ export function ReservaWizard() {
                 <input
                   {...register("email")}
                   type="email"
+                  autoComplete="email"
+                  maxLength={120}
                   className="fisio-input"
                   placeholder="ana@correo.com"
                 />
@@ -192,6 +215,9 @@ export function ReservaWizard() {
               <Field label="Teléfono" error={errors.telefono?.message}>
                 <input
                   {...register("telefono")}
+                  type="tel"
+                  autoComplete="tel"
+                  maxLength={20}
                   className="fisio-input"
                   placeholder="300 000 0000"
                 />
@@ -199,6 +225,7 @@ export function ReservaWizard() {
               <Field label="Notas (opcional)">
                 <textarea
                   {...register("notas")}
+                  maxLength={300}
                   className="fisio-input min-h-24"
                   placeholder="Algo que debamos saber antes de tu sesión"
                 />

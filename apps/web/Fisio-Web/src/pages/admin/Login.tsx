@@ -1,13 +1,14 @@
 import { Link } from "react-router-dom";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/site/brand-mark";
 
 export default function AdminLoginPage() {
   return (
     <main className="grid min-h-screen sm:grid-cols-2">
-      <section className="hidden flex-col justify-between bg-deep-600 p-10 text-white sm:flex">
-        <Link to="/" className="font-display text-lg">
-          Fisioterapeuta Li
+      <section className="gradient-bg hidden flex-col justify-between p-10 text-white sm:flex">
+        <Link to="/">
+          <BrandMark variant="light" />
         </Link>
         <div>
           <p className="font-display text-3xl leading-tight">
@@ -29,13 +30,26 @@ export default function AdminLoginPage() {
             Ingresa con tu cuenta administrativa.
           </p>
 
-          <form className="mt-8 grid gap-4">
+          <form className="mt-8 grid gap-4" autoComplete="on">
+            {/* Honeypot anti-bots: invisible para personas, si un bot lo
+                rellena se descarta el envío en el backend. */}
+            <input
+              type="text"
+              name="company"
+              tabIndex={-1}
+              autoComplete="off"
+              className="hidden"
+              aria-hidden="true"
+            />
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink-900">
                 Correo
               </span>
               <input
                 type="email"
+                name="email"
+                autoComplete="username"
+                required
                 className="fisio-input"
                 placeholder="admin@fisioterapeutali.com"
               />
@@ -46,6 +60,10 @@ export default function AdminLoginPage() {
               </span>
               <input
                 type="password"
+                name="password"
+                autoComplete="current-password"
+                required
+                minLength={8}
                 className="fisio-input"
                 placeholder="••••••••"
               />

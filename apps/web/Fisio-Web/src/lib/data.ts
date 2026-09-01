@@ -297,6 +297,8 @@ export type Resena = {
   calificacion: 1 | 2 | 3 | 4 | 5;
   comentario: string;
   servicio: string;
+  fecha: string; // YYYY-MM-DD
+  sede?: "Tunja" | "Turmequé";
 };
 
 export const resenasEjemplo: Resena[] = [
@@ -306,6 +308,8 @@ export const resenasEjemplo: Resena[] = [
     comentario:
       "Llegué con dolor lumbar crónico y en pocas sesiones noté la diferencia. Lina explica cada técnica antes de aplicarla, eso me dio mucha confianza.",
     servicio: "Rehabilitación física",
+    fecha: "2026-08-12",
+    sede: "Tunja",
   },
   {
     nombre: "Andrés F.",
@@ -313,6 +317,8 @@ export const resenasEjemplo: Resena[] = [
     comentario:
       "El plan de ejercicio personalizado se ajustó a mi horario de entrenamiento. Muy profesional y puntual en cada sesión.",
     servicio: "Prescripción de ejercicio",
+    fecha: "2026-08-05",
+    sede: "Tunja",
   },
   {
     nombre: "Paula M.",
@@ -320,5 +326,43 @@ export const resenasEjemplo: Resena[] = [
     comentario:
       "La descarga muscular de cuerpo completo después de mi maratón fue justo lo que necesitaba para recuperarme rápido.",
     servicio: "Modulación postejercicio",
+    fecha: "2026-07-28",
+    sede: "Turmequé",
+  },
+  {
+    nombre: "Diego H.",
+    calificacion: 5,
+    comentario:
+      "La punción seca me sacó de un dolor de hombro que llevaba meses arrastrando. Explica cada paso y el procedimiento se siente seguro.",
+    servicio: "Punción seca",
+    fecha: "2026-07-15",
+    sede: "Tunja",
+  },
+  {
+    nombre: "Valentina S.",
+    calificacion: 5,
+    comentario:
+      "Empecé el paquete de 10 sesiones de rehabilitación después de una cirugía de rodilla. El seguimiento sesión a sesión se nota, ajusta el plan según cómo voy avanzando.",
+    servicio: "Rehabilitación física",
+    fecha: "2026-07-02",
+    sede: "Turmequé",
+  },
+  {
+    nombre: "Julián P.",
+    calificacion: 4,
+    comentario:
+      "Buena atención y puntualidad. Lo único es que a veces hay que esperar un poco si la sesión anterior se extiende.",
+    servicio: "Modulación postejercicio",
+    fecha: "2026-06-20",
+    sede: "Tunja",
+  },
+  {
+    nombre: "Marcela G.",
+    calificacion: 5,
+    comentario:
+      "La sueroterapia combinada con las sesiones de rehabilitación aceleró muchísimo mi recuperación. Se nota la formación en neurorehabilitación.",
+    servicio: "Sueroterapia",
+    fecha: "2026-06-08",
+    sede: "Tunja",
   },
 ];

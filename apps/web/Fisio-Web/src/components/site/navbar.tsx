@@ -4,11 +4,13 @@ import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
+import { BrandMark } from "@/components/site/brand-mark";
 
 const links = [
   { href: "/", label: "Inicio" },
   { href: "/servicios", label: "Servicios" },
   { href: "/nosotros", label: "Nosotros" },
+  { href: "/resenas", label: "Reseñas" },
   { href: "/#contacto", label: "Contacto" },
 ];
 
@@ -16,18 +18,18 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-sky-100 bg-white/90 backdrop-blur">
-      <Container className="flex h-16 items-center justify-between">
-        <Link to="/" className="font-display text-lg text-ink-900">
-          Fisioterapeuta <span className="text-deep-600">Li</span>
+    <header className="glass-nav sticky top-1 z-40 border-b border-sky-100 bg-white/90 shadow-sm shadow-brand-900/5">
+      <Container className="flex h-20 items-center justify-between">
+        <Link to="/" className="text-ink-900">
+          <BrandMark />
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="hidden items-center gap-7 md:flex">
           {links.map((l) => (
             <Link
               key={l.href}
               to={l.href}
-              className="text-sm text-ink-600 transition-colors hover:text-deep-600"
+              className="text-sm font-medium text-ink-600 transition-colors hover:text-deep-600"
             >
               {l.label}
             </Link>
