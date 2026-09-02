@@ -1,0 +1,41 @@
+# Configuración de gitleaks para el repo.
+# Se ejecuta en el hook pre-commit (ver .githooks/pre-commit) y en CI.
+# Amplía el conjunto de reglas por defecto con patrones propios del proyecto.
+
+title = "fisioterapeuta-li"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "telegram-bot-token"
+description = "Token de bot de Telegram"
+regex = '''(?i)\b\d{8,10}:[A-Za-z0-9_-]{35}\b'''
+keywords = ["telegram", "bot"]
+
+[[rules]]
+id = "postgres-url-con-password"
+description = "URL de PostgreSQL con contraseña embebida"
+regex = '''postgres(?:ql)?://[^:\s]+:[^@\s]+@[^/\s]+'''
+keywords = ["postgres://", "postgresql://"]
+
+[[rules]]
+id = "google-oauth-client-secret"
+description = "Client secret de Google OAuth"
+regex = '''GOCSPX-[A-Za-z0-9_-]{28}'''
+keywords = ["GOCSPX-"]
+
+[allowlist]
+description = "Rutas y valores de ejemplo que no son secretos reales"
+paths = [
+  '''\.env\.example$''',
+  '''(.*?)\.example\.json$''',
+  '''(.*?)README\.md$''',
+  '''contracts/intents\.schema\.json$''',
+]
+regexes = [
+  '''cambiar_en_local''',
+  '''clave_compartida_entre_servicios_internos''',
+  '''TU_TOKEN_AQUI''',
+  '''00000000-0000-0000-0000-000000000000''',
+]

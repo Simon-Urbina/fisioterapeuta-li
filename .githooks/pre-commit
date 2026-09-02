@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Hook pre-commit del repo. Se activa con:  bash scripts/setup-hooks.sh
+# (configura core.hooksPath = .githooks para tu clon local).
+#
+# Objetivo: que nunca entre un secreto ni código que no compila/pasa lint
+# en las carpetas de José (services/nlu, apps/telegram-bot).
+
+set -euo pipefail
+
+RED=$'\033[31m'; GRN=$'\033[32m'; YLW=$'\033[33m'; RST=$'\033[0m'
+fail() { echo "${RED}✗ pre-commit: $1${RST}"; exit 1; }
+ok()   { echo "${GRN}✓ $1${RST}"; }
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# --- 1. Escaneo de secretos en lo que está en stage -------------------------
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks protect --staged --redact --config .gitleaks.toml; then
+    fail "gitleaks encontró un posible secreto en los cambios en stage."
+  fi
+  ok "gitleaks: sin secretos"
+else
+  echo "${YLW}⚠ gitleaks no está instalado — se omite el escaneo de secretos."
+  echo "  Instálalo: https://github.com/gitleaks/gitleaks  (CI igual lo valida)${RST}"
+fi
+
+# --- 2. Lint + typecheck solo de los paquetes tocados ----------------------
+staged="$(git diff --cached --name-only --diff-filter=ACM)"
+
+run_pkg_checks() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  echo "$staged" | grep -q "^$dir/" || return 0
+  [ -f "$dir/package.json" ] || return 0
+  echo "→ checks en $dir"
+  ( cd "$dir" && npm run --silent precommit )
+}
+
+run_pkg_checks "services/nlu"        || fail "checks de services/nlu fallaron"
+run_pkg_checks "apps/telegram-bot"   || fail "checks de apps/telegram-bot fallaron"
+
+ok "pre-commit OK"

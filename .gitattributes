@@ -1,0 +1,13 @@
+# Los scripts de shell y los hooks DEBEN quedar con LF o fallan en Linux/CI.
+*.sh            text eol=lf
+.githooks/*     text eol=lf
+
+# YAML de CI: LF para evitar diffs ruidosos entre Windows y Linux.
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# Ficheros de texto del proyecto de José: normalizar a LF en el repo.
+*.ts            text eol=lf
+*.js            text eol=lf
+*.json          text eol=lf
+*.md            text eol=lf

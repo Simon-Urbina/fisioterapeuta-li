@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fisioterapeuta-li/contracts/intents.schema.json",
+  "title": "Intención interpretada por el servicio NLU",
+  "description": "Objeto único que el servicio NLU devuelve tras interpretar un mensaje. La salida del modelo se valida contra este esquema ANTES de que llegue a la API núcleo. Si no valida, el servicio NLU responde con intencion = 'desconocida'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["intencion", "entidades", "confianza", "faltantes"],
+  "properties": {
+    "intencion": {
+      "type": "string",
+      "enum": [
+        "consultar_agenda",
+        "consultar_disponibilidad",
+        "crear_sesion",
+        "modificar_sesion",
+        "cancelar_sesion",
+        "buscar_cliente",
+        "enviar_correo",
+        "crear_carpeta",
+        "buscar_archivo",
+        "bloquear_horario",
+        "desconocida"
+      ],
+      "description": "Una de las once intenciones cerradas. Cualquier otro valor es inválido."
+    },
+    "entidades": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Datos extraídos del mensaje. Todo campo es opcional y puede venir null; el consumidor decide qué es obligatorio por intención.",
+      "properties": {
+        "cliente": { "type": ["string", "null"], "maxLength": 120 },
+        "servicio": { "type": ["string", "null"], "maxLength": 120 },
+        "sede": { "type": ["string", "null"], "maxLength": 120 },
+        "fecha": {
+          "type": ["string", "null"],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Fecha en formato ISO 8601 (YYYY-MM-DD), zona America/Bogota."
+        },
+        "hora": {
+          "type": ["string", "null"],
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "description": "Hora local de 24h (HH:MM)."
+        },
+        "sesion_id": { "type": ["integer", "null"], "minimum": 1 },
+        "destinatario": { "type": ["string", "null"], "maxLength": 254 },
+        "asunto": { "type": ["string", "null"], "maxLength": 200 },
+        "texto": { "type": ["string", "null"], "maxLength": 2000 },
+        "carpeta": { "type": ["string", "null"], "maxLength": 200 },
+        "consulta": { "type": ["string", "null"], "maxLength": 500 }
+      }
+    },
+    "confianza": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confianza del modelo en su propia interpretación. El bot usa un umbral para decidir si repregunta."
+    },
+    "faltantes": {
+      "type": "array",
+      "description": "Nombres de entidades necesarias para la intención que el mensaje no aportó. El bot pregunta por ellas.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "cliente",
+          "servicio",
+          "sede",
+          "fecha",
+          "hora",
+          "sesion_id",
+          "destinatario",
+          "asunto",
+          "texto",
+          "carpeta",
+          "consulta"
+        ]
+      },
+      "uniqueItems": true,
+      "maxItems": 11
+    }
+  }
+}
