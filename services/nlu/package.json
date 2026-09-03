@@ -9,9 +9,9 @@
   "description": "Servicio que interpreta lenguaje natural con un modelo Ollama local y devuelve una intención estructurada validada contra contracts/intents.schema.json. No tiene credenciales ni ejecuta acciones.",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env.local src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js",
+    "start": "node --env-file-if-exists=.env.local dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest",

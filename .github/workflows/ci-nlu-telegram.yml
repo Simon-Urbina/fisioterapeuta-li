@@ -1,8 +1,9 @@
 name: ci-nlu-telegram
 
-# CI de las carpetas de José: services/nlu y apps/telegram-bot.
-# Acotado por 'paths' para no interferir con los jobs que agreguen
-# los demás integrantes para sus módulos.
+# CI de services/nlu, apps/telegram-bot y el scaffold de services/core-api
+# (armado por José para desbloquear la integración del bot; ver el README
+# de core-api). Acotado por 'paths' para no interferir con los jobs que
+# agreguen los demás integrantes para sus módulos.
 
 on:
   push:
@@ -10,12 +11,14 @@ on:
     paths:
       - "services/nlu/**"
       - "apps/telegram-bot/**"
+      - "services/core-api/**"
       - "contracts/**"
       - ".github/workflows/ci-nlu-telegram.yml"
   pull_request:
     paths:
       - "services/nlu/**"
       - "apps/telegram-bot/**"
+      - "services/core-api/**"
       - "contracts/**"
       - ".github/workflows/ci-nlu-telegram.yml"
 
@@ -41,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pkg: ["services/nlu", "apps/telegram-bot"]
+        pkg: ["services/nlu", "apps/telegram-bot", "services/core-api"]
     defaults:
       run:
         working-directory: ${{ matrix.pkg }}

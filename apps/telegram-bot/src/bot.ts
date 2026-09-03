@@ -47,6 +47,21 @@ export function crearBot(cfg: Config, deps: DepsBot = {}): Bot<MiContexto> {
 
   bot.use(session<EstadoConversacion, MiContexto>({ initial: estadoInicial }));
 
+  // Traza mínima de cada update entrante (sin el contenido del mensaje).
+  bot.use(async (ctx, next) => {
+    const texto = ctx.message?.text;
+    logger.info(
+      {
+        chatId: ctx.chat?.id,
+        tipo: ctx.message !== undefined ? "message" : ctx.callbackQuery !== undefined ? "callback" : "otro",
+        esComando: texto?.startsWith("/") ?? false,
+        largo: texto?.length ?? 0,
+      },
+      "update recibido",
+    );
+    await next();
+  });
+
   // Rate limit por chat.
   bot.use(async (ctx, next) => {
     const chatId = ctx.chat?.id;
