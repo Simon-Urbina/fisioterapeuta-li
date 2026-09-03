@@ -58,7 +58,7 @@ export function construirServidor(cfg: Config = loadConfig(), db: Db = construir
   app.post("/comandos", async (req, reply) => {
     const cuerpo = ComandoSchema.safeParse(req.body);
     if (!cuerpo.success) {
-      return reply.code(422).send({ error: "cuerpo_invalido" });
+      return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
     }
 
     const resultado = await ejecutarComando(db, cuerpo.data.intencion, cuerpo.data.entidades, {
@@ -71,9 +71,14 @@ export function construirServidor(cfg: Config = loadConfig(), db: Db = construir
     );
 
     if (!resultado.ok) {
-      return reply
-        .code(resultado.error?.status ?? 500)
-        .send({ error: resultado.error?.codigo ?? "error_interno", mensaje: resultado.error?.mensaje, datos: resultado.datos });
+      // `ok: false` explícito: n8n reenvía este cuerpo tal cual al bot, que
+      // decide qué mostrar según ese campo, no según el status HTTP.
+      return reply.code(resultado.error?.status ?? 500).send({
+        ok: false,
+        error: resultado.error?.codigo ?? "error_interno",
+        mensaje: resultado.error?.mensaje,
+        datos: resultado.datos,
+      });
     }
     return reply.code(200).send({ ok: true, datos: resultado.datos });
   });

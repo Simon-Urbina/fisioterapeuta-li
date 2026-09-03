@@ -103,7 +103,9 @@ describe("servidor core-api", () => {
       payload: { intencion: "crear_sesion", entidades: { cliente: "Laura" } },
     });
     expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({ error: "datos_incompletos" });
+    // `ok: false` explícito: n8n reenvía este cuerpo tal cual, y el bot
+    // decide qué mostrar leyendo `ok`, no el status HTTP.
+    expect(res.json()).toMatchObject({ ok: false, error: "datos_incompletos" });
     await app.close();
   });
 

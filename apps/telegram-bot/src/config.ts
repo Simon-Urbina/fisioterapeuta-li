@@ -25,6 +25,13 @@ const EnvSchema = z
     INTERNAL_API_KEY: z.string().min(16).optional(),
     BOT_NLU_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(8_000),
 
+    // n8n recibe la intención ya confirmada y la reenvía a core-api
+    // (POST /comandos): "n8n envía la intención; el modelo nunca". El bot
+    // nunca le habla a core-api directamente.
+    N8N_URL: z.string().url().default("http://127.0.0.1:5678"),
+    N8N_COMANDOS_PATH: z.string().min(1).default("/webhook/comandos"),
+    BOT_N8N_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(15_000),
+
     // Confianza mínima del NLU para actuar sin repreguntar.
     BOT_CONFIANZA_MINIMA: z.coerce.number().min(0).max(1).default(0.55),
 

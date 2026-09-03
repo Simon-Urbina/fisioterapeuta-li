@@ -14,20 +14,57 @@ import {
 } from "./conversation.js";
 import { interpretar } from "./nluClient.js";
 import type { ResultadoNlu } from "./nluClient.js";
+import { ejecutarComando } from "./n8nClient.js";
+import type { ResultadoEjecucion } from "./n8nClient.js";
+import { formatearResultado } from "./resultados.js";
 
 type MiContexto = Context & SessionFlavor<EstadoConversacion>;
+
+type ClienteN8n = (
+  cfg: Config,
+  intencion: string,
+  entidades: Record<string, string | number>,
+  creadoPor: string,
+) => Promise<ResultadoEjecucion>;
 
 export interface DepsBot {
   /** Evita la llamada a getMe (útil en pruebas). */
   botInfo?: UserFromGetMe;
   /** Cliente NLU inyectable. */
   nlu?: (cfg: Config, mensaje: string) => Promise<ResultadoNlu>;
+  /** Cliente del webhook de n8n inyectable. */
+  n8n?: ClienteN8n;
   /** Reloj inyectable para el rate limiter. */
   ahora?: () => number;
 }
 
 function textoDeAccion(accion: Accion): string {
   return accion.texto;
+}
+
+/**
+ * Cuando la acción es "ejecutar", el texto de `conversation.ts` es solo un
+ * resumen para logs: la respuesta real al usuario sale de llamar a n8n (que
+ * reenvía a core-api) y formatear lo que responda. Cualquier otra acción se
+ * responde con su propio texto, sin tocar la red.
+ */
+async function responderAccion(
+  ctx: MiContexto,
+  cfg: Config,
+  n8n: ClienteN8n,
+  chatId: number,
+  accion: Accion,
+): Promise<void> {
+  if (accion.tipo !== "ejecutar") {
+    await ctx.reply(textoDeAccion(accion));
+    return;
+  }
+  logger.info(
+    { chatId, intencion: accion.intencion, entidades: Object.keys(accion.entidades) },
+    "accion a ejecutar",
+  );
+  const resultado = await n8n(cfg, accion.intencion, accion.entidades, String(chatId));
+  await ctx.reply(formatearResultado(accion.intencion, resultado));
 }
 
 function interpretarSiNo(texto: string): "si" | "no" | null {
@@ -43,6 +80,7 @@ export function crearBot(cfg: Config, deps: DepsBot = {}): Bot<MiContexto> {
     deps.botInfo !== undefined ? { botInfo: deps.botInfo } : {},
   );
   const nlu = deps.nlu ?? interpretar;
+  const n8n = deps.n8n ?? ejecutarComando;
   const limiter = new RateLimiter(cfg.BOT_RATE_LIMIT_POR_MINUTO, deps.ahora);
 
   bot.use(session<EstadoConversacion, MiContexto>({ initial: estadoInicial }));
@@ -102,20 +140,13 @@ export function crearBot(cfg: Config, deps: DepsBot = {}): Bot<MiContexto> {
       }
       const r = resolverConfirmacion(ctx.session, sn);
       ctx.session = r.estado;
-      await ctx.reply(textoDeAccion(r.accion));
+      await responderAccion(ctx, cfg, n8n, chatId, r.accion);
       return;
     }
 
     const r = await procesarTexto(cfg, ctx.session, ctx.message.text, nlu);
     ctx.session = r.estado;
-
-    if (r.accion.tipo === "ejecutar") {
-      logger.info(
-        { chatId, intencion: r.accion.intencion, entidades: Object.keys(r.accion.entidades) },
-        "accion a ejecutar",
-      );
-    }
-    await ctx.reply(textoDeAccion(r.accion));
+    await responderAccion(ctx, cfg, n8n, chatId, r.accion);
   });
 
   // Cualquier otro tipo de mensaje (fotos, stickers, etc.): respuesta breve.

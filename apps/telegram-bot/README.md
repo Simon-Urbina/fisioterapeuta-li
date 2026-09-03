@@ -55,7 +55,10 @@ npm run build
 ```
 
 Necesita el servicio `services/nlu` corriendo (`NLU_URL`) para el texto libre;
-los comandos estructurados funcionan sin él.
+los comandos estructurados funcionan sin él. Necesita además el webhook de
+n8n (`N8N_URL` + `N8N_COMANDOS_PATH`) para *ejecutar* una intención ya
+confirmada — el bot nunca llama a `services/core-api` directamente, se lo
+pide a n8n y n8n reenvía a `POST /comandos` (ver `services/core-api/README.md`).
 
 ## Estructura
 
@@ -68,9 +71,11 @@ src/
   ratelimit.ts     limitador por chat en memoria
   sensitive.ts     qué intenciones exigen confirmación
   nluClient.ts     llama a services/nlu y revalida la respuesta
+  n8nClient.ts     llama al webhook de n8n para ejecutar una intención confirmada
+  resultados.ts    traduce la respuesta de n8n/core-api a texto para el chat
   conversation.ts  reducer de estado: slot-filling, confirmación (sin grammY)
   commands.ts      textos de los comandos estructurados (funciones puras)
   bot.ts           ensamblado de grammY: sesión, rate limit, auth, handlers
   index.ts         arranque long polling y cierre ordenado
-test/              auth, ratelimit, sanitize, nluClient, conversation, bot
+test/              auth, ratelimit, sanitize, nluClient, n8nClient, resultados, conversation, bot
 ```
