@@ -26,3 +26,9 @@ dist-ssr
 # Multimedia local
 public/images/FOTOS/
 public/images/VIDEOS/
+# Archivos y carpetas locales/no subir al repositorio
+.agents/
+.claude/
+dist/
+graphify-out/
+ResumenFisio.pdf

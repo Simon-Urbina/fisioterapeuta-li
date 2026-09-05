@@ -1,11 +1,25 @@
-import { Gift, Users, CreditCard, CalendarClock } from "lucide-react";
+import {
+  Gift,
+  Users,
+  CreditCard,
+  CalendarClock,
+  RefreshCw,
+  Shirt,
+} from "lucide-react";
+import { motion } from "framer-motion";
 import { Navbar } from "@/components/site/navbar";
 import { Footer } from "@/components/site/footer";
 import { Reveal } from "@/components/site/reveal";
 import { Showcase } from "@/components/site/showcase";
+import { SectionHeading } from "@/components/site/section-heading";
 import { Container } from "@/components/ui/container";
 import { ServiceCatalogCard } from "@/components/site/service-catalog-card";
-import { catalogo, promociones, politicas } from "@/lib/data";
+import {
+  catalogo,
+  promociones,
+  politicas,
+  indicacionesPreviasPorCategoria,
+} from "@/lib/data";
 
 const vitrina = [
   {
@@ -17,7 +31,7 @@ const vitrina = [
     chipLabel: "Valoración inicial",
     chipValue: 100000,
     imageSrc: "/images/servicio-valoracion.jpg",
-    imageAlt: "Valoración y rehabilitación física",
+    imageAlt: "Lina Murillo aplicando terapia manual en consultorio",
   },
   {
     key: "prescripcion-ejercicio",
@@ -27,8 +41,8 @@ const vitrina = [
       "Programas ajustados a tus objetivos y tu proceso, con opción individual o en grupo -- ideal para mantenimiento y prevención, no solo para lesión.",
     chipLabel: "Plan personalizado",
     chipValue: 60000,
-    imageSrc: "/images/servicio-rehabilitacion.jpg",
-    imageAlt: "Prescripción de ejercicio",
+    imageSrc: "/images/servicio-ejercicio.jpg",
+    imageAlt: "Sesión de ejercicio guiado con kettlebell",
   },
   {
     key: "modulacion-postejercicio",
@@ -39,7 +53,8 @@ const vitrina = [
     chipLabel: "Descarga cuerpo completo",
     chipValue: 150000,
     imageSrc: "/images/servicio-descargas.jpg",
-    imageAlt: "Modulación postejercicio",
+    imageAlt: "Terapia de ventosas para descarga muscular",
+    imagePosition: "center bottom",
   },
   {
     key: "procedimientos-especializados",
@@ -50,7 +65,7 @@ const vitrina = [
     chipLabel: "Punción seca",
     chipValue: 120000,
     imageSrc: "/images/servicio-procedimientos.jpg",
-    imageAlt: "Procedimientos especializados",
+    imageAlt: "Técnica especializada de movilización neural",
   },
 ];
 
@@ -59,13 +74,18 @@ export default function ServiciosPage() {
     <>
       <Navbar />
       <main>
-        <section className="bg-white py-16 sm:py-20">
-          <Container>
+        <section className="relative overflow-hidden bg-white">
+          <div className="dot-grid pointer-events-none absolute inset-0" />
+          <Container className="section-sm relative">
             <Reveal>
-              <h1 className="gradient-text font-display text-4xl font-extrabold text-ink-900">
+              <span className="eyebrow">
+                <span className="h-1.5 w-1.5 rounded-full gradient-bg" />
+                Catálogo
+              </span>
+              <h1 className="gradient-text mt-3 font-display text-4xl font-extrabold leading-[1.1] sm:text-5xl">
                 Servicios
               </h1>
-              <p className="mt-3 max-w-lg text-ink-600">
+              <p className="mt-4 max-w-lg text-lg leading-relaxed text-ink-600">
                 Catálogo completo de sesiones individuales, paquetes y planes
                 grupales. Los precios de paquete incluyen el valor por sesión.
               </p>
@@ -74,8 +94,8 @@ export default function ServiciosPage() {
         </section>
 
         {/* Vitrina alternada por categoría */}
-        <section className="bg-white py-4">
-          <Container className="space-y-20 pb-20 sm:space-y-28">
+        <section className="bg-white">
+          <Container className="section space-y-20 sm:space-y-28">
             {vitrina.map((v, i) => (
               <Showcase
                 key={v.key}
@@ -87,6 +107,7 @@ export default function ServiciosPage() {
                 chipValue={v.chipValue}
                 imageSrc={v.imageSrc}
                 imageAlt={v.imageAlt}
+                imagePosition={v.imagePosition}
                 imageSide={i % 2 === 0 ? "right" : "left"}
               />
             ))}
@@ -96,16 +117,18 @@ export default function ServiciosPage() {
         {catalogo.map((cat, i) => (
           <section
             key={cat.id}
-            className={i % 2 === 0 ? "bg-mist py-4" : "bg-sky-100 py-4"}
+            className={i % 2 === 0 ? "bg-mist" : "bg-sky-100"}
           >
-            <Container className="py-12">
+            <Container className="section-sm">
               <Reveal>
-                <h2 className="font-display text-2xl text-ink-900">{cat.nombre}</h2>
-                {cat.descripcion && (
-                  <p className="mt-1 text-sm text-ink-600">{cat.descripcion}</p>
-                )}
+                <SectionHeading
+                  eyebrow={`Categoría ${String(i + 1).padStart(2, "0")}`}
+                  title={cat.nombre}
+                  description={cat.descripcion}
+                  titleClassName="text-2xl sm:text-[1.75rem]"
+                />
               </Reveal>
-              <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {cat.servicios.map((s, j) => (
                   <Reveal key={s.slug} delayMs={j * 80}>
                     <ServiceCatalogCard servicio={s} />
@@ -117,22 +140,28 @@ export default function ServiciosPage() {
         ))}
 
         {/* Promociones */}
-        <section className="gradient-bg py-16 text-white">
-          <Container className="grid gap-8 sm:grid-cols-2">
+        <section className="gradient-bg text-white">
+          <Container className="section-sm grid gap-8 sm:grid-cols-2">
             <div className="flex gap-4">
-              <Gift className="shrink-0" size={24} />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                <Gift size={22} />
+              </div>
               <div>
-                <p className="font-display text-lg">Valoración gratis</p>
-                <p className="mt-1 text-sm text-sky-100">
+                <p className="font-display text-lg font-bold">Valoración gratis</p>
+                <p className="mt-1 text-sm leading-relaxed text-sky-100">
                   {promociones.valoracionGratis}
                 </p>
               </div>
             </div>
             <div className="flex gap-4">
-              <Users className="shrink-0" size={24} />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                <Users size={22} />
+              </div>
               <div>
-                <p className="font-display text-lg">Programa de referidos</p>
-                <p className="mt-1 text-sm text-sky-100">
+                <p className="font-display text-lg font-bold">
+                  Programa de referidos
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-sky-100">
                   {promociones.referidos}
                 </p>
               </div>
@@ -140,37 +169,90 @@ export default function ServiciosPage() {
           </Container>
         </section>
 
-        {/* Políticas */}
-        <section className="bg-white py-16">
-          <Container>
+        {/* Indicaciones previas */}
+        <section className="bg-white">
+          <Container className="section-sm">
             <Reveal>
-              <h2 className="font-display text-2xl text-ink-900">
-                Reserva, cambios y pagos
-              </h2>
-              <div className="mt-8 grid gap-6 sm:grid-cols-3">
-                <div>
-                  <CalendarClock className="text-deep-600" size={22} />
-                  <p className="mt-3 text-sm text-ink-600">{politicas.reserva}</p>
-                </div>
-                <div>
-                  <CalendarClock className="text-deep-600" size={22} />
-                  <p className="mt-3 text-sm text-ink-600">
-                    {politicas.reagendamiento}
-                  </p>
-                </div>
-                <div>
-                  <CreditCard className="text-deep-600" size={22} />
-                  <p className="mt-3 text-sm text-ink-600">
-                    Medios de pago: {politicas.mediosPago.join(" · ")}
-                  </p>
-                </div>
+              <SectionHeading
+                eyebrow="Antes de tu sesión"
+                title="Cómo prepararte"
+                description="Recomendaciones según el tipo de servicio para que aproveches al máximo tu cita."
+                titleClassName="text-2xl sm:text-[1.75rem]"
+              />
+            </Reveal>
+            <div className="mt-10 grid gap-6 sm:grid-cols-2">
+              {catalogo.map((cat, i) => (
+                <Reveal key={cat.id} delayMs={i * 80}>
+                  <motion.div
+                    whileHover={{ y: -6, scale: 1.015 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    className="card h-full p-6"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-deep-600">
+                      <Shirt size={20} />
+                    </div>
+                    <p className="mt-4 font-display text-base font-bold text-ink-900">
+                      {cat.nombre}
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-ink-600">
+                      {indicacionesPreviasPorCategoria[cat.id]}
+                    </p>
+                  </motion.div>
+                </Reveal>
+              ))}
+            </div>
+          </Container>
+        </section>
+
+        {/* Políticas */}
+        <section className="bg-mist">
+          <Container className="section-sm">
+            <Reveal>
+              <SectionHeading
+                eyebrow="Antes de reservar"
+                title="Reserva, cambios y pagos"
+                titleClassName="text-2xl sm:text-[1.75rem]"
+              />
+              <div className="mt-10 grid gap-6 sm:grid-cols-3">
+                <PolicyCard icon={<CalendarClock size={20} />} text={politicas.reserva} />
+                <PolicyCard
+                  icon={<RefreshCw size={20} />}
+                  text={politicas.reagendamiento}
+                />
+                <PolicyCard
+                  icon={<CreditCard size={20} />}
+                  text={`Medios de pago: ${politicas.mediosPago.join(" · ")}`}
+                />
               </div>
-              <p className="mt-8 text-sm text-ink-600">{politicas.convenios}</p>
+              <p className="mt-8 rounded-2xl border border-sky-100 bg-white p-5 text-sm leading-relaxed text-ink-600">
+                {politicas.convenios}
+              </p>
             </Reveal>
           </Container>
         </section>
       </main>
       <Footer />
     </>
+  );
+}
+
+function PolicyCard({
+  icon,
+  text,
+}: {
+  icon: React.ReactNode;
+  text: string;
+}) {
+  return (
+    <motion.div
+      whileHover={{ y: -6, scale: 1.015 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className="card h-full p-6"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-deep-600">
+        {icon}
+      </div>
+      <p className="mt-4 text-sm leading-relaxed text-ink-600">{text}</p>
+    </motion.div>
   );
 }

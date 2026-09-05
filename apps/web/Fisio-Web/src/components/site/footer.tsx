@@ -1,52 +1,78 @@
 import { Link } from "react-router-dom";
+import { MessageCircle, Clock, MapPin } from "lucide-react";
 import { Container } from "@/components/ui/container";
+import { BrandMark } from "@/components/site/brand-mark";
+import { contacto, sedes } from "@/lib/data";
 
 export function Footer() {
   return (
-    <footer id="contacto" className="gradient-bg mt-auto text-white">
-      <Container className="grid gap-10 py-14 sm:grid-cols-3">
+    <footer className="gradient-bg mt-auto text-white">
+      <Container className="grid gap-10 py-16 sm:grid-cols-3">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 font-display text-sm font-bold">
-              Li
-            </div>
-            <p className="font-display text-lg">Fisioterapeuta Li</p>
-          </div>
-          <p className="mt-3 max-w-xs text-sm text-sky-100">
+          <BrandMark variant="light" />
+          <p className="mt-4 max-w-xs text-sm leading-relaxed text-sky-100">
             Sesiones de fisioterapia personalizadas para recuperar tu
             movimiento, a tu ritmo.
           </p>
         </div>
 
         <div>
-          <p className="text-sm font-medium text-sky-100">Contacto</p>
-          <ul className="mt-3 space-y-2 text-sm text-white/90">
-            <li>hola@fisioterapeutali.com</li>
-            <li>+57 300 000 0000</li>
-            <li>Bogotá, Colombia</li>
+          <p className="text-xs font-semibold uppercase tracking-wider text-brand-200">
+            Contacto
+          </p>
+          <ul className="mt-4 space-y-2.5 text-sm text-white/90">
+            <li>
+              <a
+                href={contacto.whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 transition-colors hover:text-white"
+              >
+                <MessageCircle size={15} className="text-sky-100" />
+                WhatsApp {contacto.whatsapp}
+              </a>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <Clock size={15} className="mt-0.5 shrink-0 text-sky-100" />
+              {contacto.horarioGeneral}
+            </li>
+            {sedes.map((s) => (
+              <li key={s.codigo} className="flex items-start gap-2.5">
+                <MapPin size={15} className="mt-0.5 shrink-0 text-sky-100" />
+                <span>
+                  {s.nombre} · {s.ciudad}
+                  <span className="block text-xs text-sky-100/80">{s.nota}</span>
+                </span>
+              </li>
+            ))}
           </ul>
         </div>
 
         <div>
-          <p className="text-sm font-medium text-sky-100">Enlaces</p>
-          <ul className="mt-3 space-y-2 text-sm text-white/90">
+          <p className="text-xs font-semibold uppercase tracking-wider text-brand-200">
+            Enlaces
+          </p>
+          <ul className="mt-4 space-y-2.5 text-sm text-white/90">
             <li>
-              <Link to="/servicios" className="hover:text-white">
+              <Link to="/servicios" className="transition-colors hover:text-white">
                 Servicios
               </Link>
             </li>
             <li>
-              <Link to="/resenas" className="hover:text-white">
+              <Link to="/resenas" className="transition-colors hover:text-white">
                 Reseñas
               </Link>
             </li>
             <li>
-              <Link to="/reservar" className="hover:text-white">
+              <Link to="/reservar" className="transition-colors hover:text-white">
                 Reservar cita
               </Link>
             </li>
             <li>
-              <Link to="/admin/login" className="hover:text-white">
+              <Link
+                to="/admin/login"
+                className="transition-colors hover:text-white"
+              >
                 Acceso administrativo
               </Link>
             </li>

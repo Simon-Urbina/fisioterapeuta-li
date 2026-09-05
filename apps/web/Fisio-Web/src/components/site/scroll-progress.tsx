@@ -1,27 +1,41 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Barra fina en la parte superior que muestra el avance de scroll de la
-// página -- un único efecto global, montado una vez en App.tsx.
+// página. Usa scaleX (compositable, sin recalcular layout) y un punto de
+// luz que sigue el borde de avance.
 export function ScrollProgress() {
   const [progress, setProgress] = useState(0);
+  const raf = useRef(0);
 
   useEffect(() => {
-    function onScroll() {
+    const update = () => {
+      raf.current = 0;
       const scrollTop = window.scrollY;
-      const height = document.documentElement.scrollHeight - window.innerHeight;
+      const height =
+        document.documentElement.scrollHeight - window.innerHeight;
       setProgress(height > 0 ? Math.min(1, scrollTop / height) : 0);
-    }
+    };
+    const onScroll = () => {
+      if (!raf.current) raf.current = requestAnimationFrame(update);
+    };
+    update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf.current) cancelAnimationFrame(raf.current);
+    };
   }, []);
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 h-1 bg-sky-100">
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-50 h-[3px] bg-sky-100/60">
       <div
-        className="h-full gradient-bg transition-[width] duration-150 ease-out"
-        style={{ width: `${progress * 100}%` }}
-      />
+        className="relative h-full origin-left gradient-bg transition-transform duration-150 ease-out"
+        style={{ transform: `scaleX(${progress})` }}
+      >
+        <span className="absolute -right-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-brand-400 shadow-[0_0_8px_2px_var(--color-brand-400)]" />
+      </div>
     </div>
   );
 }

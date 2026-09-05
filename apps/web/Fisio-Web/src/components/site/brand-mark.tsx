@@ -12,16 +12,16 @@ export function BrandMark({
   size?: "default" | "sm";
   variant?: "default" | "light";
 }) {
-  const logoSize = size === "sm" ? "h-9" : "h-12";
+  const logoSize = size === "sm" ? "h-9" : "h-11";
   const isLight = variant === "light";
 
   return (
     <div className="flex items-center gap-3">
       <img
-        src="public/images/Logo.png"
+        src="/images/Logo.png"
         alt="Fisioterapeuta Li"
         className={cn(
-          "w-auto object-contain",
+          "w-auto shrink-0 object-contain transition-transform duration-200 group-hover/brand:scale-105",
           logoSize
         )}
       />

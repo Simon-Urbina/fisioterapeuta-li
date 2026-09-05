@@ -1,38 +1,55 @@
-import { Star, ArrowUpRight } from "lucide-react";
+import { Star, ArrowUpRight, Quote } from "lucide-react";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Container } from "@/components/ui/container";
 import { Reveal } from "@/components/site/reveal";
+import { SectionHeading } from "@/components/site/section-heading";
 import { resenasEjemplo } from "@/lib/data";
 
 export function Testimonials() {
   const destacadas = resenasEjemplo.slice(0, 3);
 
   return (
-    <section className="bg-white py-4">
-      <Container>
+    <section className="bg-white">
+      <Container className="section-sm">
         <div className="flex items-end justify-between gap-6">
-          <div>
-            <h2 className="font-display text-3xl text-ink-900">
-              Lo que cuentan quienes ya vinieron
-            </h2>
-            <p className="mt-2 max-w-md text-ink-600">
-              Experiencias reales de pacientes atendidos en consulta.
-            </p>
-          </div>
+          <Reveal>
+            <SectionHeading
+              eyebrow="Testimonios"
+              title="Lo que cuentan quienes ya vinieron"
+              description="Experiencias reales de pacientes atendidos en consulta."
+            />
+          </Reveal>
           <Link
             to="/resenas"
-            className="hidden shrink-0 items-center gap-1 text-sm font-medium text-deep-600 hover:text-deep-700 sm:flex"
+            className="group hidden shrink-0 items-center gap-1 pb-1 text-sm font-semibold text-deep-600 transition-colors hover:text-deep-700 sm:flex"
           >
-            Ver todas <ArrowUpRight size={16} />
+            Ver todas
+            <ArrowUpRight
+              size={16}
+              className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+            />
           </Link>
         </div>
 
-        <div className="mt-10 grid gap-6 pb-16 sm:grid-cols-3">
+        <div className="mt-10 grid gap-6 sm:grid-cols-3">
           {destacadas.map((r, i) => (
             <Reveal key={r.nombre} delayMs={i * 100}>
-              <figure className="flex h-full flex-col justify-between rounded-2xl border border-sky-100 bg-mist p-6">
+              <motion.figure
+                whileHover={{ y: -6, scale: 1.015 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                className="card flex h-full flex-col justify-between p-6"
+              >
                 <div>
-                  <div className="flex gap-0.5" aria-label={`${r.calificacion} de 5 estrellas`}>
+                  <Quote
+                    size={26}
+                    className="fill-sky-100 text-sky-100"
+                    strokeWidth={0}
+                  />
+                  <div
+                    className="mt-3 flex gap-0.5"
+                    aria-label={`${r.calificacion} de 5 estrellas`}
+                  >
                     {Array.from({ length: 5 }).map((_, j) => (
                       <Star
                         key={j}
@@ -45,22 +62,22 @@ export function Testimonials() {
                       />
                     ))}
                   </div>
-                  <blockquote className="mt-4 text-sm text-ink-600">
+                  <blockquote className="mt-4 text-sm leading-relaxed text-ink-600">
                     &ldquo;{r.comentario}&rdquo;
                   </blockquote>
                 </div>
-                <figcaption className="mt-6 text-sm">
-                  <span className="font-medium text-ink-900">{r.nombre}</span>
+                <figcaption className="mt-6 border-t border-sky-100 pt-4 text-sm">
+                  <span className="font-semibold text-ink-900">{r.nombre}</span>
                   <span className="text-ink-600"> · {r.servicio}</span>
                 </figcaption>
-              </figure>
+              </motion.figure>
             </Reveal>
           ))}
         </div>
 
         <Link
           to="/resenas"
-          className="flex items-center gap-1 pb-16 text-sm font-medium text-deep-600 sm:hidden"
+          className="mt-8 flex items-center gap-1 text-sm font-semibold text-deep-600 sm:hidden"
         >
           Ver todas las reseñas <ArrowUpRight size={16} />
         </Link>
