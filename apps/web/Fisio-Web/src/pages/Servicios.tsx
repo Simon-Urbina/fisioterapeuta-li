@@ -5,6 +5,10 @@ import {
   CalendarClock,
   RefreshCw,
   Shirt,
+  Sparkles,
+  CheckCircle2,
+  Clock,
+  ShieldCheck,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/site/navbar";
@@ -74,21 +78,65 @@ export default function ServiciosPage() {
     <>
       <Navbar />
       <main>
-        <section className="relative overflow-hidden bg-white">
-          <div className="dot-grid pointer-events-none absolute inset-0" />
-          <Container className="section-sm relative">
+        {/* Encabezado Principal Rediseñado */}
+        <section className="grain relative overflow-hidden bg-white pb-12 pt-8 sm:pb-16 sm:pt-12">
+          <div className="dot-grid pointer-events-none absolute inset-0 opacity-60" />
+          <Container className="relative">
             <Reveal>
-              <span className="eyebrow">
-                <span className="h-1.5 w-1.5 rounded-full gradient-bg" />
-                Catálogo
-              </span>
-              <h1 className="gradient-text mt-3 font-display text-4xl font-extrabold leading-[1.1] sm:text-5xl">
-                Servicios
-              </h1>
-              <p className="mt-4 max-w-lg text-lg leading-relaxed text-ink-600">
-                Catálogo completo de sesiones individuales, paquetes y planes
-                grupales. Los precios de paquete incluyen el valor por sesión.
-              </p>
+              <div className="grid items-center gap-8 lg:grid-cols-12">
+                {/* Texto a la izquierda */}
+                <div className="lg:col-span-7">
+                  <span className="eyebrow inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3.5 py-1 text-xs font-semibold text-deep-600">
+                    <span className="h-2 w-2 rounded-full gradient-bg" />
+                    Catálogo de Fisioterapia
+                  </span>
+                  
+                  <h1 className="gradient-text mt-4 font-display text-4xl font-extrabold leading-[1.1] sm:text-5xl lg:text-6xl">
+                    Servicios
+                  </h1>
+                  
+                  <p className="mt-4 max-w-xl text-base sm:text-lg leading-relaxed text-ink-600">
+                    Catálogo completo de sesiones individuales, paquetes y planes grupales.
+                    Los precios de paquete incluyen el valor por sesión.
+                  </p>
+
+                  <div className="mt-6 flex flex-wrap items-center gap-4 text-xs font-semibold text-ink-600">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-100 bg-white px-3 py-1.5 shadow-xs">
+                      <CheckCircle2 size={15} className="text-deep-600" /> Atención personalizada
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-100 bg-white px-3 py-1.5 shadow-xs">
+                      <Clock size={15} className="text-deep-600" /> Citas a tu ritmo
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tarjetas rápidas informativas a la derecha para llenar el espacio libre */}
+                <div className="grid gap-3.5 sm:grid-cols-2 lg:col-span-5">
+                  <div className="card sheen p-4">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-100 text-deep-600">
+                      <Sparkles size={18} />
+                    </div>
+                    <p className="mt-3 font-display text-sm font-bold text-ink-900">
+                      Planes Flexibles
+                    </p>
+                    <p className="mt-1 text-xs text-ink-600">
+                      Ajustados a tu ritmo y presupuesto con descuentos en paquetes.
+                    </p>
+                  </div>
+
+                  <div className="card sheen p-4">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-100 text-deep-600">
+                      <ShieldCheck size={18} />
+                    </div>
+                    <p className="mt-3 font-display text-sm font-bold text-ink-900">
+                      Acompañamiento
+                    </p>
+                    <p className="mt-1 text-xs text-ink-600">
+                      Evaluación continua y ajuste de tratamiento en cada sesión.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </Reveal>
           </Container>
         </section>
@@ -114,6 +162,7 @@ export default function ServiciosPage() {
           </Container>
         </section>
 
+        {/* Listado de Servicios por Categoría */}
         {catalogo.map((cat, i) => (
           <section
             key={cat.id}
@@ -139,12 +188,12 @@ export default function ServiciosPage() {
           </section>
         ))}
 
-        {/* Promociones */}
-        <section className="gradient-bg text-white">
-          <Container className="section-sm grid gap-8 sm:grid-cols-2">
-            <div className="flex gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15">
-                <Gift size={22} />
+        {/* Banner de Promociones Rediseñado */}
+        <section className="gradient-bg text-white py-12">
+          <Container className="grid gap-6 sm:grid-cols-2">
+            <div className="flex gap-4 rounded-2xl bg-white/10 p-6 backdrop-blur-sm border border-white/10">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                <Gift size={24} />
               </div>
               <div>
                 <p className="font-display text-lg font-bold">Valoración gratis</p>
@@ -153,9 +202,10 @@ export default function ServiciosPage() {
                 </p>
               </div>
             </div>
-            <div className="flex gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15">
-                <Users size={22} />
+
+            <div className="flex gap-4 rounded-2xl bg-white/10 p-6 backdrop-blur-sm border border-white/10">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                <Users size={24} />
               </div>
               <div>
                 <p className="font-display text-lg font-bold">
@@ -184,9 +234,9 @@ export default function ServiciosPage() {
               {catalogo.map((cat, i) => (
                 <Reveal key={cat.id} delayMs={i * 80}>
                   <motion.div
-                    whileHover={{ y: -6, scale: 1.015 }}
+                    whileHover={{ y: -6 }}
                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    className="card h-full p-6"
+                    className="card card-hover sheen h-full p-6 border-l-4 border-l-deep-600"
                   >
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-deep-600">
                       <Shirt size={20} />
@@ -224,7 +274,7 @@ export default function ServiciosPage() {
                   text={`Medios de pago: ${politicas.mediosPago.join(" · ")}`}
                 />
               </div>
-              <p className="mt-8 rounded-2xl border border-sky-100 bg-white p-5 text-sm leading-relaxed text-ink-600">
+              <p className="mt-8 rounded-2xl border border-sky-100 bg-white p-5 text-sm leading-relaxed text-ink-600 shadow-xs">
                 {politicas.convenios}
               </p>
             </Reveal>
@@ -245,9 +295,9 @@ function PolicyCard({
 }) {
   return (
     <motion.div
-      whileHover={{ y: -6, scale: 1.015 }}
+      whileHover={{ y: -6 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className="card h-full p-6"
+      className="card card-hover sheen h-full p-6"
     >
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-deep-600">
         {icon}

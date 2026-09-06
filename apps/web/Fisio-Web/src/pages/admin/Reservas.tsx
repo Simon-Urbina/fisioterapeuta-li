@@ -1,12 +1,18 @@
-import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { Search, Phone } from "lucide-react";
 import { motion } from "framer-motion";
 import { AdminShell } from "@/components/admin/admin-shell";
-import { PageHeader, Badge, TableCard, Th } from "@/components/admin/kit";
+import { PageHeader, TableCard } from "@/components/admin/kit";
 import { Reveal } from "@/components/site/reveal";
-import { estadoReservaTono } from "@/components/admin/estado";
-import { reservasEjemplo, type EstadoReserva } from "@/lib/data";
+import { reservasEjemplo, type EstadoReserva, type Reserva } from "@/lib/data";
 import { cn } from "@/lib/utils";
+
+// Función para normalizar texto (ignora acentos y mayúsculas)
+const normalizarTexto = (texto: string) =>
+  texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 const estados: (EstadoReserva | "todas")[] = [
   "todas",
@@ -15,102 +21,163 @@ const estados: (EstadoReserva | "todas")[] = [
   "cancelada",
 ];
 
+// Estilos de estado estandarizados
+const obtenerEstiloEstado = (estado: EstadoReserva) => {
+  switch (estado) {
+    case "confirmada":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200/80";
+    case "pendiente":
+      return "bg-amber-50 text-amber-700 border-amber-200/80";
+    case "cancelada":
+      return "bg-rose-50 text-rose-700 border-rose-200/80";
+    default:
+      return "bg-slate-50 text-slate-700 border-slate-200";
+  }
+};
+
 export default function AdminReservasPage() {
   const [estado, setEstado] = useState<(typeof estados)[number]>("todas");
   const [q, setQ] = useState("");
+  const [reservas, setReservas] = useState<Reserva[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    const cargarReservas = async () => {
+      try {
+        setCargando(true);
+        const res = await fetch('/api/reservas');
+        if (!res.ok) throw new Error('API no disponible');
+        const data = await res.json();
+        setReservas(data);
+      } catch {
+        setReservas(reservasEjemplo);
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    cargarReservas();
+  }, []);
 
   const filtradas = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return reservasEjemplo
+    const term = normalizarTexto(q.trim());
+
+    return reservas
       .filter((r) => estado === "todas" || r.estado === estado)
-      .filter(
-        (r) =>
-          !term ||
-          r.cliente.toLowerCase().includes(term) ||
-          r.servicio.toLowerCase().includes(term) ||
-          r.sede.toLowerCase().includes(term)
-      )
+      .filter((r) => {
+        if (!term) return true;
+
+        const clienteNorm = normalizarTexto(r.cliente);
+        const servicioNorm = normalizarTexto(r.servicio);
+        const sedeNorm = normalizarTexto(r.sede);
+        const telefonoNorm = normalizarTexto(r.telefono);
+
+        return (
+          clienteNorm.includes(term) ||
+          servicioNorm.includes(term) ||
+          sedeNorm.includes(term) ||
+          telefonoNorm.includes(term)
+        );
+      })
       .sort((a, b) => (b.fecha + b.hora).localeCompare(a.fecha + a.hora));
-  }, [estado, q]);
+  }, [estado, q, reservas]);
 
   const conteo = (e: EstadoReserva) =>
-    reservasEjemplo.filter((r) => r.estado === e).length;
+    reservas.filter((r) => r.estado === e).length;
 
   return (
     <AdminShell>
       <PageHeader
         title="Reservas"
-        subtitle={`${reservasEjemplo.length} reservas · ${conteo("confirmada")} confirmadas · ${conteo("pendiente")} pendientes · ${conteo("cancelada")} canceladas`}
+        subtitle={`${reservas.length} reservas · ${conteo("confirmada")} confirmadas · ${conteo("pendiente")} pendientes · ${conteo("cancelada")} canceladas`}
       />
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      {/* Filtros y Buscador */}
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           {estados.map((e) => (
             <motion.button
               key={e}
-              whileTap={{ scale: 0.94 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setEstado(e)}
               className={cn(
-                "rounded-full border px-4 py-1.5 text-sm font-medium capitalize transition-colors",
+                "rounded-full border px-3.5 py-1.5 text-xs font-normal capitalize transition-all duration-200 shadow-sm cursor-pointer",
                 estado === e
-                  ? "border-deep-600 bg-deep-600 text-white"
-                  : "border-sky-300 bg-white text-ink-600 hover:bg-sky-100"
+                  ? "border-brand-800 bg-brand-800 text-white"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50/50 hover:text-brand-900"
               )}
             >
-              {e}
+              {e === "todas" ? "Todas las reservas" : e}
             </motion.button>
           ))}
         </div>
-        <div className="relative ml-auto">
+
+        <div className="relative w-full sm:w-64">
           <Search
-            size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-600"
+            size={14}
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
           />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar cliente o servicio"
-            className="fisio-input w-64 pl-9"
+            placeholder="Buscar cliente o servicio..."
+            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-4 text-xs font-normal text-slate-700 placeholder:text-slate-400 focus:border-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-700/10 shadow-sm transition-all"
           />
         </div>
       </div>
 
+      {/* Tabla estandarizada con letra compacta (text-xs) */}
       <Reveal className="mt-6">
         <TableCard>
-          <thead className="border-b border-sky-100 bg-sky-100/60 text-xs uppercase tracking-wide text-ink-600">
+          <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wider text-slate-600">
             <tr>
-              <Th>Fecha</Th>
-              <Th>Hora</Th>
-              <Th>Cliente</Th>
-              <Th>Teléfono</Th>
-              <Th>Servicio</Th>
-              <Th>Sede</Th>
-              <Th>Canal</Th>
-              <Th>Estado</Th>
+              <th className="py-3.5 px-5 text-left">Fecha</th>
+              <th className="py-3.5 px-5 text-left">Hora</th>
+              <th className="py-3.5 px-5 text-left">Cliente</th>
+              <th className="py-3.5 px-5 text-left">Teléfono</th>
+              <th className="py-3.5 px-5 text-left">Servicio</th>
+              <th className="py-3.5 px-5 text-left">Sede</th>
+              <th className="py-3.5 px-5 text-left">Canal</th>
+              <th className="py-3.5 px-5 text-left">Estado</th>
             </tr>
           </thead>
-          <tbody>
-            {filtradas.map((r) => (
-              <tr
-                key={r.id}
-                className="border-b border-sky-100 transition-colors last:border-0 hover:bg-mist"
-              >
-                <td className="px-5 py-3.5 text-ink-600">{r.fecha}</td>
-                <td className="px-5 py-3.5 text-ink-600">{r.hora}</td>
-                <td className="px-5 py-3.5 font-medium text-ink-900">{r.cliente}</td>
-                <td className="px-5 py-3.5 text-ink-600">{r.telefono}</td>
-                <td className="px-5 py-3.5 text-ink-600">{r.servicio}</td>
-                <td className="px-5 py-3.5 text-ink-600">{r.sede}</td>
-                <td className="px-5 py-3.5 text-ink-600">{r.canal}</td>
-                <td className="px-5 py-3.5">
-                  <Badge tono={estadoReservaTono(r.estado)}>{r.estado}</Badge>
+          <tbody className="divide-y divide-slate-100 text-xs font-normal text-slate-700">
+            {cargando ? (
+              <tr>
+                <td colSpan={8} className="px-5 py-12 text-center text-xs text-slate-400">
+                  Cargando reservas...
                 </td>
               </tr>
-            ))}
-            {filtradas.length === 0 && (
+            ) : (
+              filtradas.map((r) => (
+                <tr
+                  key={r.id}
+                  className="transition-colors duration-150 hover:bg-slate-50/80"
+                >
+                  <td className="px-5 py-3.5 whitespace-nowrap">{r.fecha}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap">{r.hora}</td>
+                  <td className="px-5 py-3.5">{r.cliente}</td>
+                  <td className="px-5 py-3.5">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Phone size={13} className="text-slate-400" />
+                      {r.telefono}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">{r.servicio}</td>
+                  <td className="px-5 py-3.5">{r.sede}</td>
+                  <td className="px-5 py-3.5 capitalize">{r.canal}</td>
+                  <td className="px-5 py-3.5">
+                    <span className={`inline-block px-2.5 py-0.5 text-xs rounded-full border ${obtenerEstiloEstado(r.estado)}`}>
+                      {r.estado}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+            {!cargando && filtradas.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-5 py-10 text-center text-sm text-ink-600">
-                  No hay reservas con esos filtros.
+                <td colSpan={8} className="px-5 py-12 text-center text-xs text-slate-400">
+                  No hay reservas que coincidan con los filtros seleccionados.
                 </td>
               </tr>
             )}

@@ -12,7 +12,7 @@ export default function ReservarPage() {
           <ReservaWizard />
         </div>
       </main>
-      <Footer />
+      <Footer />  
     </>
   );
 }

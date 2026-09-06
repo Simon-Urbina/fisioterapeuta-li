@@ -1,76 +1,67 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { serviciosDestacados } from "@/lib/data";
-import { useParallax } from "@/lib/use-parallax";
+import { Calendar, ArrowRight, CheckCircle2 } from 'lucide-react';
 
-// Motif del hero: un blob orgánico que muta su silueta, un anillo punteado
-// que gira con un punto en órbita, y motas que flotan a distinto ritmo.
-// Encima, una insignia que rota entre los servicios destacados y enlaza a
-// /reservar. Mezclar CSS + SVG con movimiento asíncrono evita el look
-// "tres círculos concéntricos perfectos" de plantilla generada.
-export function HeroMotif() {
-  const [index, setIndex] = useState(0);
-  const parallax = useParallax<HTMLDivElement>(0.08);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setIndex((i) => (i + 1) % serviciosDestacados.length);
-    }, 2800);
-    return () => clearInterval(id);
-  }, []);
-
-  const activo = serviciosDestacados[index];
-
+export const Hero = () => {
   return (
-    <div
-      ref={parallax}
-      className="relative mx-auto flex aspect-square w-full max-w-md items-center justify-center"
-    >
-      {/* Blob orgánico que muta */}
-      <div className="animate-blob animate-float-lg absolute h-[78%] w-[78%] gradient-bg opacity-90 blur-[1px]" />
-      <div
-        className="animate-blob absolute h-[62%] w-[62%] bg-sky-300/60"
-        style={{ animationDelay: "-6s", animationDuration: "20s" }}
-      />
+    <section className="relative bg-slate-900 text-white overflow-hidden py-16 md:py-24">
+      <div className="container mx-mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          
+          {/* Columna Izquierda: Propuesta de Valor + CTA */}
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-semibold border border-emerald-500/20">
+              <CheckCircle2 className="w-4 h-4" /> Fisioterapia Especializada
+            </div>
+            
+            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-50 leading-tight">
+              Recupera tu movilidad y vive <span className="text-emerald-400">sin dolor</span>
+            </h1>
+            
+            <p className="text-slate-300 text-base sm:text-lg">
+              Tratamientos personalizados de rehabilitación deportiva, terapia musculoesquelética y recuperación post-operatoria.
+            </p>
 
-      {/* Anillo punteado que gira + punto en órbita */}
-      <svg viewBox="0 0 400 400" className="absolute h-full w-full" aria-hidden>
-        <circle
-          cx="200"
-          cy="200"
-          r="176"
-          fill="none"
-          stroke="var(--color-sky-300)"
-          strokeWidth="2"
-          strokeDasharray="2 12"
-          className="animate-spin-slow"
-          style={{ transformOrigin: "200px 200px" }}
-        />
-      </svg>
-      <div className="animate-orbit absolute h-full w-full">
-        <span className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full bg-brand-400 shadow-[0_0_12px_2px_var(--color-brand-300)]" />
+            <div className="flex flex-col sm:flex-row gap-4 pt-2">
+              <a
+                href="#agendar"
+                className="inline-flex justify-center items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-6 py-3 rounded-lg shadow-lg hover:shadow-emerald-500/20 transition-all"
+              >
+                <Calendar className="w-5 h-5" />
+                Agendar Valoración
+              </a>
+              <a
+                href="#servicios"
+                className="inline-flex justify-center items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-6 py-3 rounded-lg transition-all"
+              >
+                Ver Servicios
+                <ArrowRight className="w-4 h-4" />
+              </a>
+            </div>
+          </div>
+
+          {/* Columna Derecha: Tarjeta Flotante + Imagen */}
+          <div className="relative flex justify-center">
+            <div className="relative w-full max-w-md bg-slate-800 rounded-2xl p-4 border border-slate-700 shadow-2xl overflow-hidden">
+              <img
+                src="/images/hero-physio.jpg" 
+                alt="Sesión de Fisioterapia"
+                className="w-full h-72 object-cover rounded-xl"
+              />
+              {/* Badge flotante de Disponibilidad */}
+              <div className="absolute bottom-6 left-6 right-6 bg-slate-900/95 backdrop-blur-md p-4 rounded-xl border border-slate-700 shadow-lg flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-400 font-medium">Disponibilidad Hoy</p>
+                  <p className="text-sm font-semibold text-emerald-400">2 turnos disponibles</p>
+                </div>
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
-
-      {/* Motas flotando, fuera de fase */}
-      <span className="animate-float absolute left-[12%] top-[22%] h-2.5 w-2.5 rounded-full bg-white/80" />
-      <span
-        className="animate-float-lg absolute right-[14%] top-[30%] h-2 w-2 rounded-full bg-brand-200"
-        style={{ animationDelay: "-3s" }}
-      />
-      <span
-        className="animate-float absolute bottom-[26%] right-[20%] h-1.5 w-1.5 rounded-full bg-white/70"
-        style={{ animationDelay: "-1.5s" }}
-      />
-
-      {/* Insignia rotativa de servicio */}
-      <Link
-        key={activo.slug}
-        to={`/reservar?servicio=${activo.slug}`}
-        className="animate-fade-in absolute bottom-2 flex items-center gap-2 rounded-full border border-sky-300 bg-white/95 px-4 py-2 text-sm font-semibold text-deep-600 shadow-lg shadow-brand-900/10 backdrop-blur transition-transform duration-300 hover:-translate-y-0.5 hover:bg-white"
-      >
-        <span className="h-2 w-2 rounded-full gradient-bg" />
-        {activo.nombre}
-      </Link>
-    </div>
+    </section>
   );
-}
+};

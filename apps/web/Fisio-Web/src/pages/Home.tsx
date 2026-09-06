@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -11,6 +11,9 @@ import {
   MapPin,
   Clock,
   CreditCard,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
 } from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -37,16 +40,51 @@ import {
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
+// Colección de imágenes para el carrusel
+const imagenesHero = [
+  {
+    src: "/images/Logo.png",
+    alt: "Logo Lina Murillo",
+    badge: "Especialista Certificada",
+    isLogo: true,
+  },
+  {
+    src: "/images/hero-sesion.jpg",
+    alt: "Lina Murillo, fisioterapeuta, aplicando una sesión de terapia manual a un paciente",
+    badge: "Fisioterapia Personalizada",
+    isLogo: false,
+  },
+  {
+    src: "/images/servicio-ejercicio.jpg",
+    alt: "Sesión de ejercicio terapéutico y rehabilitación",
+    badge: "Ejercicio Terapéutico",
+    isLogo: false,
+  },
+];
+
 export default function Home() {
   const glow = useParallax<HTMLDivElement>(0.12);
   const heroRef = useRef<HTMLElement>(null);
   const photoRef = useRef<HTMLDivElement>(null);
 
-  // Entrada del hero: una sola timeline orquestada (mejor que reveals
-  // independientes para lo primero que ve alguien) + un parallax sutil de
-  // la foto atado al scroll. El resto de la página usa <Reveal> (Framer
-  // Motion) porque son revelados repetidos e independientes al hacer
-  // scroll -- aquí, en cambio, todo entra junto al cargar la página.
+  // carrusel
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % imagenesHero.length);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const nextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % imagenesHero.length);
+  };
+
+  const prevSlide = () => {
+    setCurrentSlide((prev) => (prev - 1 + imagenesHero.length) % imagenesHero.length);
+  };
+
   useGSAP(
     () => {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -86,7 +124,7 @@ export default function Home() {
       <Navbar />
 
       <main>
-        {/* Hero */}
+        {/* Hero Section */}
         <section ref={heroRef} className="grain relative overflow-hidden bg-white">
           <div className="dot-grid pointer-events-none absolute inset-0" />
           <div
@@ -94,9 +132,10 @@ export default function Home() {
             className="pointer-events-none absolute left-1/2 top-20 h-[560px] w-[560px] -translate-x-1/2 rounded-full bg-brand-400/10 blur-[150px]"
           />
 
-          <Container className="relative py-16 sm:py-24">
+          <Container className="relative py-12 sm:py-20">
             <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-10">
-              {/* Texto */}
+              
+              {/* Columna Izquierda: Texto */}
               <div className="mx-auto max-w-xl text-center lg:mx-0 lg:max-w-none lg:text-left">
                 <span className="hero-badge inline-flex items-center gap-2 rounded-full border border-sky-300 bg-white/80 px-4 py-1.5 text-xs font-semibold text-brand-900 shadow-sm shadow-brand-900/5 backdrop-blur">
                   <span className="h-2.5 w-2.5 rounded-full gradient-bg" />
@@ -110,15 +149,17 @@ export default function Home() {
                   </span>
                   .
                 </h1>
+
                 <p className="hero-desc mx-auto mt-6 max-w-md text-lg leading-relaxed text-ink-600 lg:mx-0">
                   Sesiones de fisioterapia personalizadas, agenda tu cita en
                   minutos y recibe la confirmación al instante.
                 </p>
-                <div className="hero-cta mt-9 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+
+                <div className="hero-cta mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
                   <Button
                     type="button"
                     size="lg"
-                    className="gradient-bg-pan"
+                    className="gradient-bg-pan shadow-md shadow-brand-900/15"
                     title="Muy pronto podrás agendar por Telegram"
                   >
                     <TelegramIcon size={18} /> Agendar cita
@@ -127,27 +168,81 @@ export default function Home() {
                     Ver servicios
                   </Button>
                 </div>
+
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs font-semibold text-ink-600 lg:justify-start">
+                  <span className="flex items-center gap-1.5 text-deep-600">
+                    <CheckCircle2 size={16} /> Valoración integral
+                  </span>
+                  <span className="flex items-center gap-1.5 text-deep-600">
+                    <CheckCircle2 size={16} /> Atención 1 a 1
+                  </span>
+                </div>
               </div>
 
-              {/* Foto real */}
+              {/* Columna Derecha */}
               <div
                 ref={photoRef}
                 className="group relative mx-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-sky-100 shadow-2xl shadow-brand-900/15 lg:max-w-none"
               >
-                <img
-                  src="/images/hero-sesion.jpg"
-                  alt="Lina Murillo, fisioterapeuta, aplicando una sesión de terapia manual a un paciente"
-                  loading="eager"
-                  className="h-[380px] w-full object-cover transition-transform duration-500 group-hover:scale-[1.03] sm:h-[460px] lg:h-[560px]"
-                />
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-deep-700/35 via-transparent to-transparent" />
+                <div className="relative h-[380px] w-full sm:h-[460px] lg:h-[520px] bg-sky-50/50">
+                  {imagenesHero.map((img, index) => (
+                    <img
+                      key={img.src}
+                      src={img.src}
+                      alt={img.alt}
+                      loading={index === 0 ? "eager" : "lazy"}
+                      className={`absolute inset-0 h-full w-full transition-all duration-500 ease-in-out ${
+                        img.isLogo ? "object-contain p-12 bg-white" : "object-cover group-hover:scale-[1.03]"
+                      } ${
+                        index === currentSlide ? "opacity-100 scale-100" : "opacity-0 pointer-events-none"
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-deep-700/40 via-transparent to-transparent" />
+
+                <div className="absolute top-4 left-4 z-10 rounded-full bg-white/90 px-3.5 py-1 text-xs font-bold text-brand-900 backdrop-blur shadow-sm border border-sky-100">
+                  {imagenesHero[currentSlide].badge}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={prevSlide}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-2 text-ink-900 backdrop-blur transition hover:bg-white hover:scale-105 active:scale-95 cursor-pointer shadow-md z-10"
+                  aria-label="Imagen anterior"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <button
+                  type="button"
+                  onClick={nextSlide}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-2 text-ink-900 backdrop-blur transition hover:bg-white hover:scale-105 active:scale-95 cursor-pointer shadow-md z-10"
+                  aria-label="Imagen siguiente"
+                >
+                  <ChevronRight size={20} />
+                </button>
+
+                {/* Indicadores flotantes (Dots) */}
+                <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/40 px-3 py-1.5 backdrop-blur-sm z-10">
+                  {imagenesHero.map((_, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setCurrentSlide(index)}
+                      className={`h-2 rounded-full transition-all cursor-pointer ${
+                        index === currentSlide ? "w-6 bg-white" : "w-2 bg-white/50 hover:bg-white/80"
+                      }`}
+                      aria-label={`Ir a imagen ${index + 1}`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Promociones reales */}
-            <div className="mx-auto mt-8 grid max-w-2xl gap-4 sm:grid-cols-2">
+            <div className="mx-auto mt-10 grid max-w-2xl gap-4 sm:grid-cols-2">
               <Reveal variant="left" delayMs={250}>
-                <div className="card card-hover sheen h-full p-5 text-left">
+                <div className="card card-hover sheen h-full p-5 text-left border-l-4 border-l-deep-600">
                   <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-deep-600">
                     <Gift size={14} /> Promoción
                   </div>
@@ -159,8 +254,9 @@ export default function Home() {
                   </p>
                 </div>
               </Reveal>
+
               <Reveal variant="right" delayMs={330}>
-                <div className="card card-hover sheen h-full p-5 text-left">
+                <div className="card card-hover sheen h-full p-5 text-left border-l-4 border-l-azure-500">
                   <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-azure-500">
                     <Users size={14} /> Referidos
                   </div>
@@ -174,8 +270,9 @@ export default function Home() {
               </Reveal>
             </div>
 
+            {/* Estadísticas */}
             <Reveal delayMs={320}>
-              <dl className="mx-auto mt-14 grid max-w-lg grid-cols-3 divide-x divide-sky-100 rounded-2xl border border-sky-100 bg-white/70 py-6 shadow-sm shadow-brand-900/5 backdrop-blur">
+              <dl className="mx-auto mt-12 grid max-w-lg grid-cols-3 divide-x divide-sky-100 rounded-2xl border border-sky-100 bg-white/80 py-6 shadow-sm shadow-brand-900/5 backdrop-blur">
                 <Stat value="+500" label="sesiones realizadas" />
                 <Stat value="4" label="áreas de tratamiento" />
                 <Stat value="24/7" label="reserva en línea" />
@@ -187,7 +284,7 @@ export default function Home() {
         <WaveDivider fill="var(--color-white)" className="bg-mist" />
 
         {/* Cómo funciona */}
-        <section className="bg-white">
+        <section className="bg-white py-6">
           <Container className="section-sm">
             <Reveal>
               <SectionHeading
@@ -205,7 +302,7 @@ export default function Home() {
                   text="Consulta la disponibilidad real y escoge el momento que te sirva."
                 />
               </Reveal>
-              <Reveal delayMs={120} className="sm:translate-y-8">
+              <Reveal delayMs={120}>
                 <Feature
                   number="02"
                   icon={<MessageCircle className="text-deep-600" size={20} />}
@@ -227,7 +324,7 @@ export default function Home() {
 
         <WaveDivider fill="var(--color-sky-100)" className="bg-white" />
 
-        {/* Servicios preview */}
+        {/* Servicios */}
         <section className="bg-sky-100">
           <Container className="section-sm">
             <div className="flex items-end justify-between gap-6">
@@ -256,7 +353,6 @@ export default function Home() {
                   key={s.slug}
                   variant={i % 2 === 0 ? "left" : "right"}
                   delayMs={(i % 2) * 90}
-                  className={i % 2 === 1 ? "sm:translate-y-6" : undefined}
                 >
                   <Link
                     to={`/reservar?servicio=${s.slug}`}
@@ -286,7 +382,6 @@ export default function Home() {
 
         <Testimonials />
 
-        {/* CTA final */}
         <section className="bg-white pb-4">
           <Container>
             <Reveal variant="scale">
