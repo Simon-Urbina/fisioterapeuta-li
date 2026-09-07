@@ -2,15 +2,44 @@ import { CalendarDays, Wallet, Activity, UserPlus } from "lucide-react";
 import { motion } from "framer-motion";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { PageHeader, Metric, BarRow } from "@/components/admin/kit";
+import { ExportMenu } from "@/components/admin/export-menu";
 import { Reveal } from "@/components/site/reveal";
 import { indicadores as k } from "@/lib/data";
 import { formatCOP } from "@/lib/utils";
+import { exportarExcel, exportarPDF } from "@/lib/reportes";
 
 function delta(actual: number, prev: number): string {
   if (prev === 0) return "—";
   const p = Math.round(((actual - prev) / prev) * 100);
   return `${p >= 0 ? "+" : ""}${p}% vs. periodo anterior`;
 }
+
+const resumenFilas = () => [
+  {
+    Indicador: "Citas de la semana",
+    Actual: k.citasSemana,
+    Anterior: k.citasSemanaPrev,
+    "Variación": delta(k.citasSemana, k.citasSemanaPrev),
+  },
+  {
+    Indicador: "Ingresos del mes",
+    Actual: formatCOP(k.ingresosMes),
+    Anterior: formatCOP(k.ingresosMesPrev),
+    "Variación": delta(k.ingresosMes, k.ingresosMesPrev),
+  },
+  {
+    Indicador: "Ocupación de agenda",
+    Actual: `${Math.round(k.ocupacion * 100)}%`,
+    Anterior: `${Math.round(k.ocupacionPrev * 100)}%`,
+    "Variación": delta(k.ocupacion, k.ocupacionPrev),
+  },
+  {
+    Indicador: "Pacientes nuevos",
+    Actual: k.nuevosPacientes,
+    Anterior: k.nuevosPacientesPrev,
+    "Variación": delta(k.nuevosPacientes, k.nuevosPacientesPrev),
+  },
+];
 
 export default function AdminIndicadoresPage() {
   const maxServ = Math.max(...k.citasPorServicio.map((s) => s.valor));
@@ -22,6 +51,51 @@ export default function AdminIndicadoresPage() {
       <PageHeader
         title="Indicadores"
         subtitle="Resumen del negocio. Datos de ejemplo hasta conectar Google Sheets y la API."
+        action={
+          <ExportMenu
+            onExcel={() =>
+              exportarExcel("indicadores", [
+                { nombre: "Resumen", filas: resumenFilas() },
+                {
+                  nombre: "Citas por servicio",
+                  filas: k.citasPorServicio.map((s) => ({
+                    Servicio: s.servicio,
+                    Citas: s.valor,
+                  })),
+                },
+                {
+                  nombre: "Reservas por canal",
+                  filas: k.reservasPorCanal.map((s) => ({
+                    Canal: s.canal,
+                    Reservas: s.valor,
+                  })),
+                },
+                {
+                  nombre: "Citas por día",
+                  filas: k.citasPorDia.map((d) => ({
+                    "Día": d.dia,
+                    Citas: d.valor,
+                  })),
+                },
+              ])
+            }
+            onPdf={() =>
+              exportarPDF({
+                base: "indicadores",
+                titulo: "Resumen de indicadores",
+                subtitulo:
+                  "Datos de ejemplo hasta conectar Google Sheets y la API núcleo.",
+                columnas: ["Indicador", "Actual", "Anterior", "Variación"],
+                filas: resumenFilas().map((f) => [
+                  f.Indicador,
+                  f.Actual,
+                  f.Anterior,
+                  f["Variación"],
+                ]),
+              })
+            }
+          />
+        }
       />
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

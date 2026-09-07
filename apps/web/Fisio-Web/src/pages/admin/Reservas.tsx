@@ -3,9 +3,22 @@ import { Search, Phone } from "lucide-react";
 import { motion } from "framer-motion";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { PageHeader, TableCard } from "@/components/admin/kit";
+import { ExportMenu } from "@/components/admin/export-menu";
 import { Reveal } from "@/components/site/reveal";
 import { reservasEjemplo, type EstadoReserva, type Reserva } from "@/lib/data";
 import { cn } from "@/lib/utils";
+import { exportarExcel, exportarPDF } from "@/lib/reportes";
+
+const COLUMNAS_RESERVAS = [
+  "Fecha",
+  "Hora",
+  "Cliente",
+  "Teléfono",
+  "Servicio",
+  "Sede",
+  "Canal",
+  "Estado",
+] as const;
 
 // Función para normalizar texto (ignora acentos y mayúsculas)
 const normalizarTexto = (texto: string) =>
@@ -85,6 +98,24 @@ export default function AdminReservasPage() {
   const conteo = (e: EstadoReserva) =>
     reservas.filter((r) => r.estado === e).length;
 
+  const filasReporte = () =>
+    filtradas.map((r) => [
+      r.fecha,
+      r.hora,
+      r.cliente,
+      r.telefono,
+      r.servicio,
+      r.sede,
+      r.canal,
+      r.estado,
+    ]);
+
+  const metaReporte = [
+    `Filtro de estado: ${estado === "todas" ? "todas" : estado}`,
+    q.trim() ? `Búsqueda: "${q.trim()}"` : "Sin búsqueda de texto",
+    `${filtradas.length} reserva(s) en el reporte`,
+  ];
+
   return (
     <AdminShell>
       <PageHeader
@@ -112,16 +143,47 @@ export default function AdminReservasPage() {
           ))}
         </div>
 
-        <div className="relative w-full sm:w-64">
-          <Search
-            size={14}
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-          />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar cliente o servicio..."
-            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-4 text-xs font-normal text-slate-700 placeholder:text-slate-400 focus:border-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-700/10 shadow-sm transition-all"
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <div className="relative w-full sm:w-64">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar cliente o servicio..."
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-4 text-xs font-normal text-slate-700 placeholder:text-slate-400 focus:border-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-700/10 shadow-sm transition-all"
+            />
+          </div>
+          <ExportMenu
+            disabled={filtradas.length === 0}
+            onExcel={() =>
+              exportarExcel("reservas", [
+                {
+                  nombre: "Reservas",
+                  filas: filtradas.map((r) => ({
+                    Fecha: r.fecha,
+                    Hora: r.hora,
+                    Cliente: r.cliente,
+                    "Teléfono": r.telefono,
+                    Servicio: r.servicio,
+                    Sede: r.sede,
+                    Canal: r.canal,
+                    Estado: r.estado,
+                  })),
+                },
+              ])
+            }
+            onPdf={() =>
+              exportarPDF({
+                base: "reservas",
+                titulo: "Reporte de reservas",
+                columnas: [...COLUMNAS_RESERVAS],
+                filas: filasReporte(),
+                meta: metaReporte,
+              })
+            }
           />
         </div>
       </div>

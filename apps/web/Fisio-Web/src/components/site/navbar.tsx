@@ -7,18 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
 import { BrandMark } from "@/components/site/brand-mark";
 import { TelegramIcon } from "@/components/site/telegram-icon";
+import { ContactModal } from "@/components/site/contact-modal";
 import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/", label: "Inicio" },
   { href: "/servicios", label: "Servicios" },
-  { href: "/nosotros", label: "Nosotros" },
+  { href: "/perfil", label: "Perfil" },
   { href: "/resenas", label: "Reseñas" },
-  { href: "/#contacto", label: "Contacto" },
 ];
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   // Oculta la barra al bajar (más pantalla para leer) y la devuelve apenas
   // subes un poco -- solo pasado un umbral, para que no "parpadee" cerca
@@ -69,10 +70,7 @@ export function Navbar() {
         <nav className="hidden items-center gap-1 md:flex">
           {links.map((l) => {
             const active =
-              l.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(l.href.replace(/#.*$/, "")) &&
-                  l.href !== "/#contacto";
+              l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);
             return (
               <Link
                 key={l.href}
@@ -95,6 +93,13 @@ export function Navbar() {
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setContactOpen(true)}
+            className="rounded-full px-3.5 py-2 text-sm font-medium text-ink-600 transition-colors hover:text-deep-600"
+          >
+            Contacto
+          </button>
         </nav>
 
         <div className="hidden md:block">
@@ -155,6 +160,22 @@ export function Navbar() {
                   </Link>
                 </motion.div>
               ))}
+              <motion.div
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: links.length * 0.05, duration: 0.25 }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setContactOpen(true);
+                  }}
+                  className="block w-full rounded-lg px-3 py-3 text-left text-sm font-medium text-ink-600 transition-colors hover:bg-sky-100 hover:text-deep-600"
+                >
+                  Contacto
+                </button>
+              </motion.div>
               <Button
                 type="button"
                 size="sm"
@@ -167,6 +188,8 @@ export function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ContactModal open={contactOpen} onClose={() => setContactOpen(false)} />
     </motion.header>
   );
 }

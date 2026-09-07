@@ -623,7 +623,7 @@ export const operacionesEjemplo: OperacionLog[] = [
 ];
 
 // =====================================================================
-//  Estado de integraciones (Google Workspace, IA local, canales).
+//  Estado de integraciones (Google Workspace y canales).
 // =====================================================================
 export type Integracion = {
   id: string;
@@ -640,8 +640,6 @@ export const integracionesEjemplo: Integracion[] = [
   { id: "drive", nombre: "Google Drive", descripcion: "Archivo documental de la empresa", estado: "conectado", detalle: "Estructura: Administración · Finanzas · Clientes · Servicios · Marketing · Plantillas", ultimoEvento: "Hace 1 h" },
   { id: "sheets", nombre: "Google Sheets", descripcion: "Reportes de citas e ingresos", estado: "conectado", detalle: "Hoja \"Reportes Fisio-Li 2026\"", ultimoEvento: "Hoy 07:00" },
   { id: "telegram", nombre: "Bot de Telegram", descripcion: "Canal conversacional del administrador", estado: "conectado", detalle: "1 chat autorizado · long polling activo", ultimoEvento: "Hace 5 min" },
-  { id: "ollama", nombre: "Modelo de IA local (Ollama)", descripcion: "Interpretación de lenguaje natural", estado: "conectado", detalle: "llama3.1:8b · responde en ~1.4 s", ultimoEvento: "Hace 5 min" },
-  { id: "n8n", nombre: "n8n", descripcion: "Orquestación de flujos", estado: "conectado", detalle: "8 workflows activos", ultimoEvento: "Hace 2 min" },
 ];
 
 // =====================================================================

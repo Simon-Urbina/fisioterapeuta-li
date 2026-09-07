@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { MessageCircle, Clock, MapPin } from "lucide-react";
+import { CalendarCheck, Clock, MapPin } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { BrandMark } from "@/components/site/brand-mark";
 import { contacto, sedes } from "@/lib/data";
@@ -22,15 +22,13 @@ export function Footer() {
           </p>
           <ul className="mt-4 space-y-2.5 text-sm text-white/90">
             <li>
-              <a
-                href={contacto.whatsappUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                to="/reservar"
                 className="flex items-center gap-2.5 transition-colors hover:text-white"
               >
-                <MessageCircle size={15} className="text-sky-100" />
-                WhatsApp {contacto.whatsapp}
-              </a>
+                <CalendarCheck size={15} className="text-sky-100" />
+                Reservar cita en línea
+              </Link>
             </li>
             <li className="flex items-start gap-2.5">
               <Clock size={15} className="mt-0.5 shrink-0 text-sky-100" />
@@ -81,7 +79,7 @@ export function Footer() {
       </Container>
 
       <div className="border-t border-white/10 py-5 text-center text-xs text-sky-100/80">
-        © {new Date().getFullYear()} Fisioterapeuta Li — HackTech 5.0
+        © {new Date().getFullYear()} La Fisioterapeuta Li
       </div>
     </footer>
   );

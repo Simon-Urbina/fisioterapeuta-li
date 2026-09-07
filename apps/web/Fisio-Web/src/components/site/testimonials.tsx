@@ -2,7 +2,7 @@ import { Star, ArrowUpRight, Quote } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Container } from "@/components/ui/container";
-import { Reveal } from "@/components/site/reveal";
+import { Reveal, RevealGroup, RevealItem } from "@/components/site/reveal";
 import { SectionHeading } from "@/components/site/section-heading";
 import { resenasEjemplo } from "@/lib/data";
 
@@ -32,13 +32,13 @@ export function Testimonials() {
           </Link>
         </div>
 
-        <div className="mt-10 grid gap-6 sm:grid-cols-3">
-          {destacadas.map((r, i) => (
-            <Reveal key={r.nombre} delayMs={i * 100}>
+        <RevealGroup className="mt-10 grid gap-6 sm:grid-cols-3">
+          {destacadas.map((r) => (
+            <RevealItem key={r.nombre}>
               <motion.figure
                 whileHover={{ y: -6, scale: 1.015 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                className="card flex h-full flex-col justify-between p-6"
+                className="card sheen flex h-full flex-col justify-between p-6"
               >
                 <div>
                   <Quote
@@ -71,9 +71,9 @@ export function Testimonials() {
                   <span className="text-ink-600"> · {r.servicio}</span>
                 </figcaption>
               </motion.figure>
-            </Reveal>
+            </RevealItem>
           ))}
-        </div>
+        </RevealGroup>
 
         <Link
           to="/resenas"

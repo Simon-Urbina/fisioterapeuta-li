@@ -180,10 +180,7 @@ export function ReservaWizard() {
     <Container className="max-w-3xl pb-16">
       <div className="flex items-center justify-between border-b border-sky-100 pb-4">
         <div>
-          <span className="eyebrow inline-flex items-center gap-1.5 text-xs font-bold uppercase text-deep-600">
-            <span className="h-1.5 w-1.5 rounded-full gradient-bg" />
-            Agenda en línea
-          </span>
+          <span className="eyebrow text-deep-600">Agenda en línea</span>
           <h1 className="mt-1 font-display text-2xl font-extrabold text-ink-900 sm:text-3xl">
             Reservar Cita
           </h1>
@@ -409,7 +406,7 @@ export function ReservaWizard() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                       >
-                        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-deep-600">
+                        <p className="mb-3 font-display text-xs font-semibold text-deep-600">
                           Horarios disponibles
                         </p>
                         <div className="grid grid-cols-3 gap-2">
@@ -765,7 +762,7 @@ function Grupo({
 }) {
   return (
     <fieldset className="mt-6 border-t border-sky-100 pt-5">
-      <legend className="text-xs font-bold uppercase tracking-wider text-deep-600">
+      <legend className="font-display text-xs font-semibold text-deep-600">
         {titulo}
       </legend>
       <div className="mt-3 grid gap-4">{children}</div>
