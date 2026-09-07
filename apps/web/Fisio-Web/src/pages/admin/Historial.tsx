@@ -4,10 +4,12 @@ import { motion } from "framer-motion";
 import { Search, Terminal, ShieldAlert } from "lucide-react";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { PageHeader, Badge, TableCard, Th } from "@/components/admin/kit";
+import { ExportMenu } from "@/components/admin/export-menu";
 import { Reveal } from "@/components/site/reveal";
 import { operacionesEjemplo } from "@/lib/data";
 import { api, leerToken, ApiError, type EventoHistorialApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { exportarExcel, exportarPDF } from "@/lib/reportes";
 
 const tonoResultado: Record<EventoHistorialApi["resultado"], "verde" | "rojo" | "ambar"> = {
   ok: "verde",
@@ -103,17 +105,64 @@ export default function AdminHistorialPage() {
         title="Historial de operaciones"
         subtitle="Actividad reciente reconstruida desde la base de datos: reservas creadas o canceladas, y pagos registrados o verificados."
         action={
-          <div className="relative w-full sm:w-72">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              type="text"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por actor, acción o detalle..."
-              className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-9 pr-4 text-xs font-normal text-slate-800 placeholder:text-slate-400 focus:border-brand-800 focus:outline-none focus:ring-4 focus:ring-brand-800/10 shadow-xs transition-all"
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <div className="relative w-full sm:w-72">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="text"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar por actor, acción o detalle..."
+                className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-9 pr-4 text-xs font-normal text-slate-800 placeholder:text-slate-400 focus:border-brand-800 focus:outline-none focus:ring-4 focus:ring-brand-800/10 shadow-xs transition-all"
+              />
+            </div>
+            <ExportMenu
+              disabled={filtradas.length === 0}
+              onExcel={() =>
+                exportarExcel("historial", [
+                  {
+                    nombre: "Historial",
+                    filas: filtradas.map((o) => ({
+                      "Fecha y hora": fmt(o.fechaHora),
+                      Actor: o.actor,
+                      Canal: o.canal,
+                      "Acción": o.accion,
+                      Detalle: o.detalle,
+                      Resultado: o.resultado,
+                    })),
+                  },
+                ])
+              }
+              onPdf={() =>
+                exportarPDF({
+                  base: "historial",
+                  titulo: "Historial de operaciones",
+                  columnas: [
+                    "Fecha y hora",
+                    "Actor",
+                    "Canal",
+                    "Acción",
+                    "Detalle",
+                    "Resultado",
+                  ],
+                  filas: filtradas.map((o) => [
+                    fmt(o.fechaHora),
+                    o.actor,
+                    o.canal,
+                    o.accion,
+                    o.detalle,
+                    o.resultado,
+                  ]),
+                  meta: [
+                    `Canal: ${canal === "todos" ? "todos" : canal}`,
+                    q.trim() ? `Búsqueda: "${q.trim()}"` : "Sin búsqueda de texto",
+                    `${filtradas.length} operación(es) en el reporte`,
+                  ],
+                })
+              }
             />
           </div>
         }

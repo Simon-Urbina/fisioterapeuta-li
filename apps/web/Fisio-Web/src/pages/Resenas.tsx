@@ -3,7 +3,8 @@ import { Star, Quote } from "lucide-react";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/site/navbar";
 import { Footer } from "@/components/site/footer";
-import { Reveal } from "@/components/site/reveal";
+import { Reveal, RevealGroup, RevealItem } from "@/components/site/reveal";
+import { TiltCard } from "@/components/site/tilt-card";
 import { Container } from "@/components/ui/container";
 import { cn } from "@/lib/utils";
 import { resenasEjemplo } from "@/lib/data";
@@ -39,10 +40,7 @@ export default function ResenasPage() {
           <div className="dot-grid pointer-events-none absolute inset-0" />
           <Container className="section-sm relative grid gap-10 md:grid-cols-[1fr_auto] md:items-center">
             <Reveal>
-              <span className="eyebrow">
-                <span className="h-1.5 w-1.5 rounded-full gradient-bg" />
-                Experiencias reales de pacientes
-              </span>
+              <span className="eyebrow">Experiencias reales de pacientes</span>
               <h1 className="gradient-text mt-3 font-display text-4xl font-extrabold leading-[1.1] sm:text-5xl">
                 Reseñas
               </h1>
@@ -139,14 +137,13 @@ export default function ResenasPage() {
               ))}
             </div>
 
-            <div className="mt-8 grid gap-5 sm:grid-cols-2">
-              {resenas.map((r, i) => (
-                <Reveal key={r.nombre + r.fecha} delayMs={(i % 4) * 90}>
-                  <motion.article
-                    whileHover={{ y: -6, scale: 1.015 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    className="card flex h-full flex-col justify-between p-6"
-                  >
+            <RevealGroup
+              key={filtro ?? "todas"}
+              className="mt-8 grid gap-5 sm:grid-cols-2"
+            >
+              {resenas.map((r) => (
+                <RevealItem key={r.nombre + r.fecha}>
+                  <TiltCard className="card sheen flex h-full flex-col justify-between rounded-2xl p-6">
                     <div>
                       <div className="flex items-center justify-between">
                         <div className="flex gap-0.5">
@@ -194,10 +191,10 @@ export default function ResenasPage() {
                         {r.servicio}
                       </span>
                     </div>
-                  </motion.article>
-                </Reveal>
+                  </TiltCard>
+                </RevealItem>
               ))}
-            </div>
+            </RevealGroup>
 
             {resenas.length === 0 && (
               <p className="mt-8 text-sm text-ink-600">

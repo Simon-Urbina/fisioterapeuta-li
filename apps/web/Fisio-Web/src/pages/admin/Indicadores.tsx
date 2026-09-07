@@ -4,10 +4,12 @@ import { CalendarDays, Wallet, Activity, UserPlus } from "lucide-react";
 import { motion } from "framer-motion";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { PageHeader, Metric, BarRow } from "@/components/admin/kit";
+import { ExportMenu } from "@/components/admin/export-menu";
 import { Reveal } from "@/components/site/reveal";
 import { indicadores as indicadoresFallback } from "@/lib/data";
 import { api, leerToken, ApiError, type IndicadoresAdminApi } from "@/lib/api";
 import { formatCOP } from "@/lib/utils";
+import { exportarExcel, exportarPDF } from "@/lib/reportes";
 
 function delta(actual: number, prev: number): string {
   if (prev === 0) return "—";
@@ -20,6 +22,33 @@ export default function AdminIndicadoresPage() {
   const [cargando, setCargando] = useState(true);
   const [enVivo, setEnVivo] = useState(false);
   const navigate = useNavigate();
+
+  const resumenFilas = () => [
+    {
+      Indicador: "Citas de la semana",
+      Actual: k.citasSemana,
+      Anterior: k.citasSemanaPrev,
+      "Variación": delta(k.citasSemana, k.citasSemanaPrev),
+    },
+    {
+      Indicador: "Ingresos del mes",
+      Actual: formatCOP(k.ingresosMes),
+      Anterior: formatCOP(k.ingresosMesPrev),
+      "Variación": delta(k.ingresosMes, k.ingresosMesPrev),
+    },
+    {
+      Indicador: "Ocupación de agenda",
+      Actual: `${Math.round(k.ocupacion * 100)}%`,
+      Anterior: `${Math.round(k.ocupacionPrev * 100)}%`,
+      "Variación": delta(k.ocupacion, k.ocupacionPrev),
+    },
+    {
+      Indicador: "Pacientes nuevos",
+      Actual: k.nuevosPacientes,
+      Anterior: k.nuevosPacientesPrev,
+      "Variación": delta(k.nuevosPacientes, k.nuevosPacientesPrev),
+    },
+  ];
 
   useEffect(() => {
     if (!leerToken()) {
@@ -63,6 +92,52 @@ export default function AdminIndicadoresPage() {
             : enVivo
               ? "Calculado en vivo desde reservas y pagos. Falta conectar Google Sheets para el reporte histórico."
               : "No se pudo conectar con la API núcleo — mostrando datos de ejemplo."
+        }
+        action={
+          <ExportMenu
+            onExcel={() =>
+              exportarExcel("indicadores", [
+                { nombre: "Resumen", filas: resumenFilas() },
+                {
+                  nombre: "Citas por servicio",
+                  filas: k.citasPorServicio.map((s) => ({
+                    Servicio: s.servicio,
+                    Citas: s.valor,
+                  })),
+                },
+                {
+                  nombre: "Reservas por canal",
+                  filas: k.reservasPorCanal.map((s) => ({
+                    Canal: s.canal,
+                    Reservas: s.valor,
+                  })),
+                },
+                {
+                  nombre: "Citas por día",
+                  filas: k.citasPorDia.map((d) => ({
+                    "Día": d.dia,
+                    Citas: d.valor,
+                  })),
+                },
+              ])
+            }
+            onPdf={() =>
+              exportarPDF({
+                base: "indicadores",
+                titulo: "Resumen de indicadores",
+                subtitulo: enVivo
+                  ? "Calculado en vivo desde reservas y pagos."
+                  : "Datos de ejemplo — no se pudo conectar con la API núcleo.",
+                columnas: ["Indicador", "Actual", "Anterior", "Variación"],
+                filas: resumenFilas().map((f) => [
+                  f.Indicador,
+                  f.Actual,
+                  f.Anterior,
+                  f["Variación"],
+                ]),
+              })
+            }
+          />
         }
       />
 

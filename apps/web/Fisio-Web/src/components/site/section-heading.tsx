@@ -26,17 +26,7 @@ export function SectionHeading({
         className
       )}
     >
-      {eyebrow && (
-        <span className="eyebrow">
-          <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full gradient-bg",
-              align === "center" && "hidden"
-            )}
-          />
-          {eyebrow}
-        </span>
-      )}
+      {eyebrow && <span className="eyebrow">{eyebrow}</span>}
       <h2
         className={cn(
           "mt-3 font-display text-3xl font-bold leading-[1.15] text-ink-900 sm:text-[2.125rem]",

@@ -22,11 +22,14 @@ import { Navbar } from "@/components/site/navbar";
 import { Footer } from "@/components/site/footer";
 import { WaveDivider } from "@/components/site/wave-divider";
 import { Testimonials } from "@/components/site/testimonials";
-import { Reveal } from "@/components/site/reveal";
+import { Reveal, RevealGroup, RevealItem } from "@/components/site/reveal";
 import { SectionHeading } from "@/components/site/section-heading";
 import { HandUnderline } from "@/components/site/hand-underline";
 import { CountUp } from "@/components/site/count-up";
 import { TelegramIcon } from "@/components/site/telegram-icon";
+import { TiltCard } from "@/components/site/tilt-card";
+import { Magnetic } from "@/components/site/magnetic";
+import { ShimmerButton } from "@/components/watermelon/shimmer-button";
 import { Button } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
 import { useParallax } from "@/lib/use-parallax";
@@ -92,7 +95,17 @@ export default function Home() {
       gsap
         .timeline({ defaults: { ease: "power3.out" } })
         .from(".hero-badge", { opacity: 0, y: -14, duration: 0.5 })
-        .from(".hero-title", { opacity: 0, y: 26, duration: 0.7 }, "-=0.25")
+        .from(
+          ".hero-word",
+          {
+            opacity: 0,
+            y: 28,
+            rotateX: -55,
+            duration: 0.62,
+            stagger: 0.055,
+          },
+          "-=0.2"
+        )
         .from(".hero-desc", { opacity: 0, y: 16, duration: 0.6 }, "-=0.4")
         .from(
           ".hero-cta > *",
@@ -142,12 +155,20 @@ export default function Home() {
                   Lina Murillo · Fisioterapia &amp; Neurorrehabilitación
                 </span>
 
-                <h1 className="hero-title mt-6 font-display text-4xl font-extrabold leading-[1.1] text-ink-900 sm:text-[3.25rem]">
-                  Tu cuerpo se mueve mejor cuando alguien lo{" "}
-                  <span className="gradient-text">
-                    <HandUnderline>cuida bien</HandUnderline>
+                <h1 className="hero-title mt-6 font-display text-4xl font-extrabold leading-[1.1] text-ink-900 [perspective:800px] sm:text-[3.25rem]">
+                  {"Tu cuerpo se mueve mejor cuando alguien lo"
+                    .split(" ")
+                    .map((w, i) => (
+                      <span key={i}>
+                        <span className="hero-word inline-block [transform-style:preserve-3d]">
+                          {w}
+                        </span>{" "}
+                      </span>
+                    ))}
+                  <span className="hero-word inline-block [transform-style:preserve-3d] gradient-text">
+                    <HandUnderline delayMs={1350}>cuida bien</HandUnderline>
                   </span>
-                  .
+                  <span className="hero-word inline-block">.</span>
                 </h1>
 
                 <p className="hero-desc mx-auto mt-6 max-w-md text-lg leading-relaxed text-ink-600 lg:mx-0">
@@ -156,14 +177,12 @@ export default function Home() {
                 </p>
 
                 <div className="hero-cta mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-                  <Button
+                  <ShimmerButton
                     type="button"
-                    size="lg"
-                    className="gradient-bg-pan shadow-md shadow-brand-900/15"
                     title="Muy pronto podrás agendar por Telegram"
                   >
                     <TelegramIcon size={18} /> Agendar cita
-                  </Button>
+                  </ShimmerButton>
                   <Button href="/servicios" size="lg" variant="secondary">
                     Ver servicios
                   </Button>
@@ -240,10 +259,10 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mx-auto mt-10 grid max-w-2xl gap-4 sm:grid-cols-2">
-              <Reveal variant="left" delayMs={250}>
-                <div className="card card-hover sheen h-full p-5 text-left border-l-4 border-l-deep-600">
-                  <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-deep-600">
+            <RevealGroup className="mx-auto mt-10 grid max-w-2xl gap-4 sm:grid-cols-2">
+              <RevealItem variant="left">
+                <TiltCard className="card sheen h-full rounded-2xl border-l-4 border-l-deep-600 p-5 text-left">
+                  <div className="flex items-center gap-1.5 font-display text-xs font-semibold text-deep-600">
                     <Gift size={14} /> Promoción
                   </div>
                   <p className="mt-2 font-display text-base font-bold text-ink-900">
@@ -252,12 +271,12 @@ export default function Home() {
                   <p className="mt-1 text-sm leading-relaxed text-ink-600">
                     {promociones.valoracionGratis}
                   </p>
-                </div>
-              </Reveal>
+                </TiltCard>
+              </RevealItem>
 
-              <Reveal variant="right" delayMs={330}>
-                <div className="card card-hover sheen h-full p-5 text-left border-l-4 border-l-azure-500">
-                  <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-azure-500">
+              <RevealItem variant="right">
+                <TiltCard className="card sheen h-full rounded-2xl border-l-4 border-l-azure-500 p-5 text-left">
+                  <div className="flex items-center gap-1.5 font-display text-xs font-semibold text-azure-500">
                     <Users size={14} /> Referidos
                   </div>
                   <p className="mt-2 font-display text-base font-bold text-ink-900">
@@ -266,9 +285,9 @@ export default function Home() {
                   <p className="mt-1 text-sm leading-relaxed text-ink-600">
                     {promociones.referidos}
                   </p>
-                </div>
-              </Reveal>
-            </div>
+                </TiltCard>
+              </RevealItem>
+            </RevealGroup>
 
             {/* Estadísticas */}
             <Reveal delayMs={320}>
@@ -293,32 +312,32 @@ export default function Home() {
                 description="Sin llamadas ni esperas: eliges, confirmas y llegas tranquilo a tu sesión."
               />
             </Reveal>
-            <div className="mt-10 grid items-start gap-6 sm:grid-cols-3">
-              <Reveal variant="left">
+            <RevealGroup className="mt-10 grid items-start gap-6 sm:grid-cols-3">
+              <RevealItem variant="left">
                 <Feature
                   number="01"
                   icon={<CalendarCheck className="text-deep-600" size={20} />}
                   title="Elige un horario"
                   text="Consulta la disponibilidad real y escoge el momento que te sirva."
                 />
-              </Reveal>
-              <Reveal delayMs={120}>
+              </RevealItem>
+              <RevealItem>
                 <Feature
                   number="02"
                   icon={<MessageCircle className="text-deep-600" size={20} />}
                   title="Recibe confirmación"
                   text="Te avisamos por correo apenas quede agendada tu sesión."
                 />
-              </Reveal>
-              <Reveal variant="right" delayMs={240}>
+              </RevealItem>
+              <RevealItem variant="right">
                 <Feature
                   number="03"
                   icon={<ShieldCheck className="text-deep-600" size={20} />}
                   title="Asiste tranquilo"
                   text="Tu plan de tratamiento queda registrado y a la mano para tu terapeuta."
                 />
-              </Reveal>
-            </div>
+              </RevealItem>
+            </RevealGroup>
           </Container>
         </section>
 
@@ -347,34 +366,32 @@ export default function Home() {
               </Link>
             </div>
 
-            <div className="mt-10 grid gap-6 sm:grid-cols-2">
-              {serviciosDestacados.map((s, i) => (
-                <Reveal
-                  key={s.slug}
-                  variant={i % 2 === 0 ? "left" : "right"}
-                  delayMs={(i % 2) * 90}
-                >
-                  <Link
-                    to={`/reservar?servicio=${s.slug}`}
-                    className="card card-hover sheen group flex h-full flex-col border-l-[3px] border-l-deep-600 p-6"
-                  >
-                    <p className="font-display text-lg font-bold text-ink-900">
-                      {s.nombre}
-                    </p>
-                    <p className="mt-2 flex-1 text-sm leading-relaxed text-ink-600">
-                      {s.descripcion}
-                    </p>
-                    <p className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-azure-500">
-                      Sesión de {s.duracionMin} minutos
-                      <ArrowRight
-                        size={13}
-                        className="transition-transform group-hover:translate-x-1"
-                      />
-                    </p>
-                  </Link>
-                </Reveal>
+            <RevealGroup className="mt-10 grid gap-6 sm:grid-cols-2">
+              {serviciosDestacados.map((s) => (
+                <RevealItem key={s.slug}>
+                  <TiltCard className="card sheen h-full rounded-2xl border-l-[3px] border-l-deep-600">
+                    <Link
+                      to={`/reservar?servicio=${s.slug}`}
+                      className="group flex h-full flex-col p-6"
+                    >
+                      <p className="font-display text-lg font-bold text-ink-900">
+                        {s.nombre}
+                      </p>
+                      <p className="mt-2 flex-1 text-sm leading-relaxed text-ink-600">
+                        {s.descripcion}
+                      </p>
+                      <p className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-azure-500">
+                        Sesión de {s.duracionMin} minutos
+                        <ArrowRight
+                          size={13}
+                          className="transition-transform group-hover:translate-x-1"
+                        />
+                      </p>
+                    </Link>
+                  </TiltCard>
+                </RevealItem>
               ))}
-            </div>
+            </RevealGroup>
           </Container>
         </section>
 
@@ -399,15 +416,19 @@ export default function Home() {
                   recuperación necesita.
                 </p>
                 <div className="relative mt-8 flex flex-wrap justify-center gap-3">
-                  <Button href="/reservar" size="lg" variant="secondary">
-                    Reservar cita <ArrowRight size={18} />
-                  </Button>
-                  <Link
-                    to="/servicios"
-                    className="inline-flex h-12 items-center gap-2 rounded-full px-6 text-[15px] font-semibold text-white ring-1 ring-inset ring-white/40 transition-colors hover:bg-white/10"
-                  >
-                    Ver servicios
-                  </Link>
+                  <Magnetic>
+                    <Button href="/reservar" size="lg" variant="secondary">
+                      Reservar cita <ArrowRight size={18} />
+                    </Button>
+                  </Magnetic>
+                  <Magnetic>
+                    <Link
+                      to="/servicios"
+                      className="inline-flex h-12 items-center gap-2 rounded-full px-6 text-[15px] font-semibold text-white ring-1 ring-inset ring-white/40 transition-colors hover:bg-white/10"
+                    >
+                      Ver servicios
+                    </Link>
+                  </Magnetic>
                 </div>
               </div>
             </Reveal>
@@ -421,14 +442,14 @@ export default function Home() {
               <SectionHeading
                 eyebrow="Contacto"
                 title="Dónde y cuándo te atendemos"
-                description="Escríbenos por WhatsApp para resolver dudas o coordinar planes grupales y convenios."
+                description="Consulta horarios y sedes, y agenda tu cita en línea en minutos."
               />
             </Reveal>
 
-            <div className="mt-10 grid gap-6 lg:grid-cols-3">
-              {sedes.map((s, i) => (
-                <Reveal key={s.codigo} delayMs={i * 90}>
-                  <div className="card h-full p-6">
+            <RevealGroup className="mt-10 grid gap-6 lg:grid-cols-3">
+              {sedes.map((s) => (
+                <RevealItem key={s.codigo}>
+                  <TiltCard className="card sheen h-full rounded-2xl p-6">
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-100">
                       <MapPin className="text-deep-600" size={20} />
                     </div>
@@ -441,11 +462,11 @@ export default function Home() {
                     <p className="mt-3 text-sm font-medium text-azure-500">
                       {s.nota}
                     </p>
-                  </div>
-                </Reveal>
+                  </TiltCard>
+                </RevealItem>
               ))}
 
-              <Reveal delayMs={180}>
+              <RevealItem>
                 <div className="card flex h-full flex-col p-6">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-100">
                     <Clock className="text-deep-600" size={20} />
@@ -464,21 +485,21 @@ export default function Home() {
                     </span>
                   </div>
                 </div>
-              </Reveal>
-            </div>
+              </RevealItem>
+            </RevealGroup>
 
             <Reveal delayMs={120}>
               <div className="mt-8 flex flex-col items-start justify-between gap-4 rounded-2xl border border-sky-100 bg-mist p-6 sm:flex-row sm:items-center">
                 <div>
                   <p className="font-display text-base font-bold text-ink-900">
-                    ¿Prefieres escribir?
+                    ¿Listo para agendar?
                   </p>
                   <p className="mt-1 text-sm text-ink-600">
-                    Respondemos por WhatsApp al {contacto.whatsapp}.
+                    Reserva en línea y recibe la confirmación al instante.
                   </p>
                 </div>
-                <Button href={contacto.whatsappUrl} variant="secondary">
-                  <MessageCircle size={16} /> Escribir por WhatsApp
+                <Button href="/reservar" variant="secondary">
+                  Reservar cita <ArrowRight size={16} />
                 </Button>
               </div>
             </Reveal>
@@ -518,7 +539,7 @@ function Feature({
   text: string;
 }) {
   return (
-    <div className="card card-hover sheen group h-full p-6">
+    <TiltCard className="card sheen group h-full rounded-2xl p-6">
       <div className="flex items-center justify-between">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-100 transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110">
           {icon}
@@ -529,6 +550,6 @@ function Feature({
       </div>
       <p className="mt-4 font-display text-lg font-bold text-ink-900">{title}</p>
       <p className="mt-1.5 text-sm leading-relaxed text-ink-600">{text}</p>
-    </div>
+    </TiltCard>
   );
 }

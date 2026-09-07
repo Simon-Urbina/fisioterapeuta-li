@@ -66,3 +66,71 @@ export function Reveal({
     </motion.div>
   );
 }
+
+// ---------------------------------------------------------------------
+//  RevealGroup / RevealItem -- orquestación de stagger para rejillas.
+//  En vez de poner `delayMs` a mano en cada tarjeta, el contenedor
+//  escalona a sus hijos: la rejilla entra como una ola, no como N
+//  fades sueltos. `RevealGroup` va en el wrapper de grid; cada celda
+//  se envuelve en `RevealItem`.
+// ---------------------------------------------------------------------
+export function RevealGroup({
+  children,
+  className,
+  stagger = 0.07,
+  amount = 0.15,
+}: {
+  children: ReactNode;
+  className?: string;
+  stagger?: number;
+  amount?: number;
+}) {
+  const prefersReducedMotion = useReducedMotion();
+
+  if (prefersReducedMotion) {
+    return <div className={className}>{children}</div>;
+  }
+
+  return (
+    <motion.div
+      className={className}
+      variants={{
+        hidden: {},
+        visible: { transition: { staggerChildren: stagger, delayChildren: 0.05 } },
+      }}
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once: true, amount, margin: "0px 0px -8% 0px" }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+export function RevealItem({
+  children,
+  className,
+  variant = "up",
+}: {
+  children: ReactNode;
+  className?: string;
+  variant?: Variant;
+}) {
+  const prefersReducedMotion = useReducedMotion();
+
+  if (prefersReducedMotion) {
+    return <div className={className}>{children}</div>;
+  }
+
+  const base = variant === "scale" ? tweenTransition : springTransition;
+
+  return (
+    <motion.div
+      className={className}
+      variants={variantsByType[variant]}
+      transition={base}
+    >
+      {children}
+    </motion.div>
+  );
+}

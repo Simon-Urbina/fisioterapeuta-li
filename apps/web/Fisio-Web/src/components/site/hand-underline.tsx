@@ -7,9 +7,14 @@ import { cn } from "@/lib/utils";
 export function HandUnderline({
   children,
   className,
+  // Retraso antes de dibujar el trazo, en ms. Útil cuando la palabra que
+  // subraya entra con otra animación (p. ej. el stagger del hero): así el
+  // trazo se dibuja cuando la palabra ya está visible y no antes.
+  delayMs = 200,
 }: {
   children: React.ReactNode;
   className?: string;
+  delayMs?: number;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [drawn, setDrawn] = useState(
@@ -56,7 +61,7 @@ export function HandUnderline({
           style={{
             strokeDasharray: 1,
             strokeDashoffset: drawn ? 0 : 1,
-            transition: "stroke-dashoffset 850ms cubic-bezier(0.65,0,0.35,1) 200ms",
+            transition: `stroke-dashoffset 850ms cubic-bezier(0.65,0,0.35,1) ${delayMs}ms`,
           }}
         />
       </svg>

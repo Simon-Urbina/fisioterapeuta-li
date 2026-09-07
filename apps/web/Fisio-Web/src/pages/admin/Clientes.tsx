@@ -17,10 +17,10 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { PageHeader, Badge } from "@/components/admin/kit";
+import { ExportMenu } from "@/components/admin/export-menu";
 import { Reveal } from "@/components/site/reveal";
 import { pacientesEjemplo } from "@/lib/data";
 import { HistoriaClinicaModal } from "@/components/admin/historia-clinica-modal";
-import { ExportMenu } from "@/components/admin/export-menu";
 import { exportarExcel, exportarPDF } from "@/lib/reportes";
 import { api, leerToken, ApiError, type PacienteAdminApi, type CitaAdminApi } from "@/lib/api";
 type PacienteEjemplo = PacienteAdminApi;
@@ -270,17 +270,20 @@ export default function AdminClientesPage() {
         title="Clientes"
         subtitle={`${listaPacientes.length} pacientes con ficha registrada.`}
         action={
-          <div className="relative w-full sm:w-72">
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por nombre o cédula..."
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-4 text-xs font-normal text-slate-700 placeholder:text-slate-400 focus:border-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-700/10 shadow-sm transition-all"
-            />
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <div className="relative w-full sm:w-72">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar por nombre o cédula..."
+                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-4 text-xs font-normal text-slate-700 placeholder:text-slate-400 focus:border-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-700/10 shadow-sm transition-all"
+              />
+            </div>
+            <ExportMenu onExcel={exportarExcelClientes} onPdf={exportarPdfClientes} disabled={filtrados.length === 0} />
           </div>
         }
       />
@@ -346,8 +349,6 @@ export default function AdminClientesPage() {
         <span className="ml-auto text-xs text-slate-400">
           {filtrados.length} de {listaPacientes.length}
         </span>
-
-        <ExportMenu onExcel={exportarExcelClientes} onPdf={exportarPdfClientes} disabled={filtrados.length === 0} />
       </div>
 
       {cargando ? (

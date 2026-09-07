@@ -1,13 +1,14 @@
 import { Target, MapPin, Clock, GraduationCap, CheckCircle2, ArrowRight } from "lucide-react";
-import { motion } from "framer-motion";
 import { Navbar } from "@/components/site/navbar";
 import { Footer } from "@/components/site/footer";
 import { Testimonials } from "@/components/site/testimonials";
-import { Reveal } from "@/components/site/reveal";
+import { Reveal, RevealGroup, RevealItem } from "@/components/site/reveal";
+import { TiltCard } from "@/components/site/tilt-card";
 import { SectionHeading } from "@/components/site/section-heading";
 import { Button } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
 import { AvatarPhoto } from "@/components/ui/avatar-photo";
+import { useParallax } from "@/lib/use-parallax";
 import { perfil } from "@/lib/data";
 
 const credenciales = [
@@ -83,7 +84,7 @@ export default function NosotrosPage() {
                     {perfil.nombreProfesional}
                   </h1>
 
-                  <p className="mt-1.5 text-xs font-bold uppercase tracking-wider text-azure-500">
+                  <p className="mt-1.5 font-display text-sm font-semibold text-azure-500">
                     {perfil.nombreCompleto}
                   </p>
 
@@ -127,38 +128,58 @@ export default function NosotrosPage() {
               />
             </Reveal>
 
-            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {credenciales.map((c, i) => (
-                <Reveal key={c.titulo} delayMs={i * 80}>
-                  <motion.div
-                    whileHover={{ y: -6 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    className="card card-hover sheen h-full p-6 border-l-4 border-l-deep-600 flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 font-display text-sm font-bold text-deep-600">
-                          {String(i + 1).padStart(2, "0")}
-                        </div>
-                        <GraduationCap size={20} className="text-azure-500" />
-                      </div>
-
-                      <h3 className="mt-4 font-display text-base font-bold text-ink-900">
-                        {c.titulo}
-                      </h3>
-
-                      <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-azure-500">
-                        {c.tipo}
-                      </p>
-
-                      <p className="mt-2 text-sm leading-relaxed text-ink-600">
-                        {c.texto}
-                      </p>
+            <RevealGroup className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {/* Banner destacado: título de pregrado, ancho completo */}
+              <RevealItem className="sm:col-span-2 lg:col-span-4">
+                <TiltCard
+                  max={3}
+                  className="card-raised flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:gap-6"
+                >
+                  <div className="flex items-center gap-4 sm:w-72 sm:shrink-0">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-100 font-display text-base font-bold text-deep-600">
+                      01
                     </div>
-                  </motion.div>
-                </Reveal>
+                    <div>
+                      <p className="font-display text-xs font-semibold text-azure-500">
+                        {credenciales[0].tipo}
+                      </p>
+                      <h3 className="mt-0.5 font-display text-lg font-bold text-ink-900">
+                        {credenciales[0].titulo}
+                      </h3>
+                    </div>
+                  </div>
+                  <p className="flex-1 text-sm leading-relaxed text-ink-600 sm:border-l sm:border-sky-100 sm:pl-6">
+                    {credenciales[0].texto}
+                  </p>
+                  <GraduationCap
+                    size={24}
+                    className="hidden shrink-0 text-azure-500 sm:block"
+                  />
+                </TiltCard>
+              </RevealItem>
+
+              {credenciales.slice(1).map((c, idx) => (
+                <RevealItem key={c.titulo}>
+                  <TiltCard className="card sheen flex h-full flex-col rounded-2xl border-l-4 border-l-deep-600 p-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-100 font-display text-sm font-bold text-deep-600">
+                        {String(idx + 2).padStart(2, "0")}
+                      </div>
+                      <GraduationCap size={18} className="text-azure-500" />
+                    </div>
+                    <h3 className="mt-3 font-display text-sm font-bold text-ink-900">
+                      {c.titulo}
+                    </h3>
+                    <p className="mt-1 font-display text-[11px] font-semibold text-azure-500">
+                      {c.tipo}
+                    </p>
+                    <p className="mt-2 text-xs leading-relaxed text-ink-600">
+                      {c.texto}
+                    </p>
+                  </TiltCard>
+                </RevealItem>
               ))}
-            </div>
+            </RevealGroup>
           </Container>
         </section>
 
@@ -186,24 +207,7 @@ export default function NosotrosPage() {
                   variant={i % 2 === 0 ? "left" : "right"}
                   delayMs={i * 100}
                 >
-                  <div className="group relative h-72 overflow-hidden rounded-3xl border border-sky-100 shadow-md shadow-brand-900/10 transition-all hover:shadow-xl sm:h-80">
-                    <img
-                      src={a.image}
-                      alt={a.alt}
-                      loading="lazy"
-                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-deep-700/90 via-deep-700/30 to-transparent" />
-                    
-                    <div className="absolute inset-x-6 bottom-6 text-white">
-                      <span className="inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-semibold backdrop-blur-xs mb-2">
-                        {a.area}
-                      </span>
-                      <p className="mt-1 text-sm sm:text-base leading-relaxed text-sky-100">
-                        {a.texto}
-                      </p>
-                    </div>
-                  </div>
+                  <AreaCard area={a.area} image={a.image} alt={a.alt} texto={a.texto} />
                 </Reveal>
               ))}
             </div>
@@ -226,28 +230,25 @@ export default function NosotrosPage() {
                 </div>
               </div>
 
-              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <RevealGroup className="mt-8 grid gap-4 sm:grid-cols-2">
                 {perfil.sedes.map((s) => (
-                  <motion.div
-                    key={s.nombre}
-                    whileHover={{ y: -4 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 22 }}
-                    className="card card-hover sheen p-6"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-azure-500">
-                        <MapPin size={16} />
+                  <RevealItem key={s.nombre}>
+                    <TiltCard className="card sheen h-full rounded-2xl p-6">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-azure-500">
+                          <MapPin size={16} />
+                        </div>
+                        <p className="font-display font-bold text-ink-900 text-base">
+                          {s.nombre}
+                        </p>
                       </div>
-                      <p className="font-display font-bold text-ink-900 text-base">
-                        {s.nombre}
+                      <p className="mt-3 text-sm leading-relaxed text-ink-600">
+                        {s.horario}
                       </p>
-                    </div>
-                    <p className="mt-3 text-sm leading-relaxed text-ink-600">
-                      {s.horario}
-                    </p>
-                  </motion.div>
+                    </TiltCard>
+                  </RevealItem>
                 ))}
-              </div>
+              </RevealGroup>
 
               <div className="mt-4 flex items-start gap-3.5 card p-6 border-l-4 border-l-azure-500">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-deep-600">
@@ -268,5 +269,41 @@ export default function NosotrosPage() {
       </main>
       <Footer />
     </>
+  );
+}
+
+function AreaCard({
+  area,
+  image,
+  alt,
+  texto,
+}: {
+  area: string;
+  image: string;
+  alt: string;
+  texto: string;
+}) {
+  const parallax = useParallax<HTMLDivElement>(0.05);
+  return (
+    <div className="group relative h-72 overflow-hidden rounded-3xl border border-sky-100 shadow-md shadow-brand-900/10 transition-all hover:shadow-xl sm:h-80">
+      <div ref={parallax} className="absolute -inset-y-10 inset-x-0 will-change-transform">
+        <img
+          src={image}
+          alt={alt}
+          loading="lazy"
+          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+        />
+      </div>
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-deep-700/90 via-deep-700/30 to-transparent" />
+
+      <div className="absolute inset-x-6 bottom-6 text-white">
+        <span className="mb-2 inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-semibold backdrop-blur-xs">
+          {area}
+        </span>
+        <p className="mt-1 text-sm leading-relaxed text-sky-100 sm:text-base">
+          {texto}
+        </p>
+      </div>
+    </div>
   );
 }

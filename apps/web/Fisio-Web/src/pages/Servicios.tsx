@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Gift,
   Users,
@@ -10,20 +11,31 @@ import {
   Clock,
   ShieldCheck,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { Navbar } from "@/components/site/navbar";
 import { Footer } from "@/components/site/footer";
-import { Reveal } from "@/components/site/reveal";
+import { Reveal, RevealGroup, RevealItem } from "@/components/site/reveal";
 import { Showcase } from "@/components/site/showcase";
 import { SectionHeading } from "@/components/site/section-heading";
 import { Container } from "@/components/ui/container";
 import { ServiceCatalogCard } from "@/components/site/service-catalog-card";
+import { FluidTabs } from "@/components/watermelon/fluid-tabs";
+import { CardSplitAccordion } from "@/components/watermelon/card-split-accordian";
 import {
   catalogo,
   promociones,
   politicas,
   indicacionesPreviasPorCategoria,
 } from "@/lib/data";
+
+// Etiqueta corta por categoría para las pestañas (los nombres completos
+// del catálogo son demasiado largos para una pestaña).
+const etiquetaCorta: Record<string, string> = {
+  "valoracion-rehabilitacion": "Valoración y rehabilitación",
+  "prescripcion-ejercicio": "Prescripción de ejercicio",
+  "modulacion-postejercicio": "Modulación postejercicio",
+  "procedimientos-especializados": "Procedimientos",
+};
 
 const vitrina = [
   {
@@ -74,6 +86,18 @@ const vitrina = [
 ];
 
 export default function ServiciosPage() {
+  const [catActiva, setCatActiva] = useState(catalogo[0].id);
+  const cat = catalogo.find((c) => c.id === catActiva) ?? catalogo[0];
+  const tabsCatalogo = catalogo.map((c, i) => ({
+    id: c.id,
+    label: etiquetaCorta[c.id] ?? c.nombre,
+    icon: (
+      <span className="font-mono text-[11px] font-bold opacity-70">
+        {String(i + 1).padStart(2, "0")}
+      </span>
+    ),
+  }));
+
   return (
     <>
       <Navbar />
@@ -162,31 +186,48 @@ export default function ServiciosPage() {
           </Container>
         </section>
 
-        {/* Listado de Servicios por Categoría */}
-        {catalogo.map((cat, i) => (
-          <section
-            key={cat.id}
-            className={i % 2 === 0 ? "bg-mist" : "bg-sky-100"}
-          >
-            <Container className="section-sm">
-              <Reveal>
-                <SectionHeading
-                  eyebrow={`Categoría ${String(i + 1).padStart(2, "0")}`}
-                  title={cat.nombre}
-                  description={cat.descripcion}
-                  titleClassName="text-2xl sm:text-[1.75rem]"
-                />
-              </Reveal>
-              <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {cat.servicios.map((s, j) => (
-                  <Reveal key={s.slug} delayMs={j * 80}>
-                    <ServiceCatalogCard servicio={s} />
-                  </Reveal>
-                ))}
-              </div>
-            </Container>
-          </section>
-        ))}
+        {/* Listado de Servicios -- una categoría a la vez (Watermelon UI FluidTabs) */}
+        <section className="bg-mist">
+          <Container className="section-sm">
+            <Reveal>
+              <SectionHeading
+                eyebrow="Catálogo por categoría"
+                title="Todos los servicios"
+                description="Elige una categoría para ver sus sesiones, paquetes y tarifas."
+                titleClassName="text-2xl sm:text-[1.75rem]"
+              />
+            </Reveal>
+
+            <div className="mt-8 overflow-x-auto pb-1">
+              <FluidTabs
+                tabs={tabsCatalogo}
+                active={catActiva}
+                onChange={setCatActiva}
+              />
+            </div>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={catActiva}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              >
+                {cat.descripcion && (
+                  <p className="mt-6 text-sm text-ink-600">{cat.descripcion}</p>
+                )}
+                <RevealGroup className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {cat.servicios.map((s) => (
+                    <RevealItem key={s.slug}>
+                      <ServiceCatalogCard servicio={s} />
+                    </RevealItem>
+                  ))}
+                </RevealGroup>
+              </motion.div>
+            </AnimatePresence>
+          </Container>
+        </section>
 
         {/* Banner de Promociones Rediseñado */}
         <section className="gradient-bg text-white py-12">
@@ -230,27 +271,17 @@ export default function ServiciosPage() {
                 titleClassName="text-2xl sm:text-[1.75rem]"
               />
             </Reveal>
-            <div className="mt-10 grid gap-6 sm:grid-cols-2">
-              {catalogo.map((cat, i) => (
-                <Reveal key={cat.id} delayMs={i * 80}>
-                  <motion.div
-                    whileHover={{ y: -6 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    className="card card-hover sheen h-full p-6 border-l-4 border-l-deep-600"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-deep-600">
-                      <Shirt size={20} />
-                    </div>
-                    <p className="mt-4 font-display text-base font-bold text-ink-900">
-                      {cat.nombre}
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-ink-600">
-                      {indicacionesPreviasPorCategoria[cat.id]}
-                    </p>
-                  </motion.div>
-                </Reveal>
-              ))}
-            </div>
+            <Reveal>
+              <CardSplitAccordion
+                className="mx-auto mt-10 max-w-2xl"
+                items={catalogo.map((c, i) => ({
+                  id: i + 1,
+                  title: c.nombre,
+                  icon: <Shirt size={16} />,
+                  content: indicacionesPreviasPorCategoria[c.id],
+                }))}
+              />
+            </Reveal>
           </Container>
         </section>
 
@@ -263,18 +294,30 @@ export default function ServiciosPage() {
                 title="Reserva, cambios y pagos"
                 titleClassName="text-2xl sm:text-[1.75rem]"
               />
-              <div className="mt-10 grid gap-6 sm:grid-cols-3">
-                <PolicyCard icon={<CalendarClock size={20} />} text={politicas.reserva} />
-                <PolicyCard
-                  icon={<RefreshCw size={20} />}
-                  text={politicas.reagendamiento}
-                />
-                <PolicyCard
-                  icon={<CreditCard size={20} />}
-                  text={`Medios de pago: ${politicas.mediosPago.join(" · ")}`}
-                />
-              </div>
-              <p className="mt-8 rounded-2xl border border-sky-100 bg-white p-5 text-sm leading-relaxed text-ink-600 shadow-xs">
+              <CardSplitAccordion
+                className="mx-auto mt-10 max-w-2xl"
+                items={[
+                  {
+                    id: 1,
+                    title: "Reserva y pago",
+                    icon: <CalendarClock size={16} />,
+                    content: politicas.reserva,
+                  },
+                  {
+                    id: 2,
+                    title: "Cambios de agenda",
+                    icon: <RefreshCw size={16} />,
+                    content: politicas.reagendamiento,
+                  },
+                  {
+                    id: 3,
+                    title: "Medios de pago",
+                    icon: <CreditCard size={16} />,
+                    content: `Medios de pago: ${politicas.mediosPago.join(" · ")}`,
+                  },
+                ]}
+              />
+              <p className="mx-auto mt-6 max-w-2xl rounded-2xl border border-sky-100 bg-white p-5 text-sm leading-relaxed text-ink-600 shadow-xs">
                 {politicas.convenios}
               </p>
             </Reveal>
@@ -283,26 +326,5 @@ export default function ServiciosPage() {
       </main>
       <Footer />
     </>
-  );
-}
-
-function PolicyCard({
-  icon,
-  text,
-}: {
-  icon: React.ReactNode;
-  text: string;
-}) {
-  return (
-    <motion.div
-      whileHover={{ y: -6 }}
-      transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className="card card-hover sheen h-full p-6"
-    >
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-deep-600">
-        {icon}
-      </div>
-      <p className="mt-4 text-sm leading-relaxed text-ink-600">{text}</p>
-    </motion.div>
   );
 }

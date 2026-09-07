@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Reveal } from "@/components/site/reveal";
+import { useParallax } from "@/lib/use-parallax";
 import { cn, formatCOP } from "@/lib/utils";
 
 // Sección alternada imagen/texto para presentar cada categoría del
@@ -34,6 +35,7 @@ export function Showcase({
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const num = String(index).padStart(2, "0");
+  const parallax = useParallax<HTMLDivElement>(0.06);
 
   const image = (
     <Reveal
@@ -44,14 +46,16 @@ export function Showcase({
       )}
     >
       {!imgFailed && (
-        <img
-          src={imageSrc}
-          alt={imageAlt}
-          loading="lazy"
-          onError={() => setImgFailed(true)}
-          style={{ objectPosition: imagePosition }}
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-        />
+        <div ref={parallax} className="absolute -inset-y-10 inset-x-0 will-change-transform">
+          <img
+            src={imageSrc}
+            alt={imageAlt}
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+            style={{ objectPosition: imagePosition }}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+          />
+        </div>
       )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-deep-700/50 via-transparent to-transparent" />
       <div className="absolute inset-x-4 bottom-4 flex items-center justify-between rounded-xl border border-white/20 bg-deep-700/85 px-4 py-3 text-xs text-white backdrop-blur-md sm:inset-x-6 sm:bottom-6">
@@ -65,10 +69,11 @@ export function Showcase({
 
   const text = (
     <Reveal>
-      <div className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-white px-3 py-1 font-display text-[11px] font-bold uppercase tracking-[0.14em] text-deep-600">
-        <span className="text-sky-300">{num}</span> {eyebrow}
+      <div className="flex items-baseline gap-2 font-display text-[0.8125rem] font-semibold text-deep-600">
+        <span className="tabular-nums text-sky-300">{num}</span>
+        {eyebrow}
       </div>
-      <h2 className="mt-4 font-display text-2xl font-bold leading-tight text-ink-900 sm:text-[1.9rem]">
+      <h2 className="mt-3 font-display text-2xl font-bold leading-tight text-ink-900 sm:text-[1.9rem]">
         {title}
       </h2>
       <p className="mt-3 text-sm leading-relaxed text-ink-600 sm:text-base">
