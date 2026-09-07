@@ -7,6 +7,7 @@ import { TarjetaCita } from '../../components/admin/tarjeta-cita';
 import type { PropiedadesTarjetaCita } from '../../components/admin/tarjeta-cita';
 import { CalendarioSemana } from '../../components/admin/calendario-semana';
 import { HistoriaClinicaModal } from '../../components/admin/historia-clinica-modal';
+import { ModalConfirmarPago } from '../../components/admin/modal-confirmar-pago';
 import { reservasEjemplo } from '@/lib/data';
 import { api, leerToken, ApiError, type CitaAdminApi, type PacienteAdminApi } from '@/lib/api';
 
@@ -88,6 +89,8 @@ export const Agenda: React.FC = () => {
 
   const [pacienteModal, setPacienteModal] = useState<PacienteAdminApi | null>(null);
   const [reservaContextoModal, setReservaContextoModal] = useState<number | null>(null);
+  // Cita cuyo comprobante de pago se está mirando (popup de confirmación).
+  const [citaPago, setCitaPago] = useState<PropiedadesTarjetaCita | null>(null);
   const navigate = useNavigate();
 
   // Carga por semana desde core-api. Sin sesión -> al login. Si la API falla
@@ -358,8 +361,7 @@ export const Agenda: React.FC = () => {
         ) : modoVista === 'calendario' ? (
           <CalendarioSemana
             dias={diasSemana}
-            alConfirmar={manejarConfirmacion}
-            alCancelar={manejarCancelacion}
+            alConfirmarPago={setCitaPago}
             alVerHistoriaClinica={abrirHistoriaClinica}
           />
         ) : modoVista === 'tablero' ? (
@@ -388,7 +390,7 @@ export const Agenda: React.FC = () => {
                       <TarjetaCita
                         key={cita.id}
                         {...cita}
-                        alConfirmar={cita.estado === 'pendiente' ? manejarConfirmacion : undefined}
+                        alConfirmar={cita.estado === 'pendiente' ? () => setCitaPago(cita) : undefined}
                         alCancelar={cita.estado === 'pendiente' ? manejarCancelacion : undefined}
                         alVerHistoriaClinica={abrirHistoriaClinica}
                       />
@@ -465,6 +467,13 @@ export const Agenda: React.FC = () => {
           onPacienteActualizado={setPacienteModal}
         />
       )}
+
+      <ModalConfirmarPago
+        cita={citaPago}
+        onConfirmar={manejarConfirmacion}
+        onCancelarCita={manejarCancelacion}
+        onClose={() => setCitaPago(null)}
+      />
     </AdminShell>
   );
 };

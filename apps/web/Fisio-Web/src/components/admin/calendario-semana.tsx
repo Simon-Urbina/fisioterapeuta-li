@@ -1,5 +1,4 @@
 import React from 'react';
-import { CheckCircle2, XCircle } from 'lucide-react';
 import type { PropiedadesTarjetaCita } from './tarjeta-cita';
 
 export interface DiaCalendario {
@@ -10,8 +9,8 @@ export interface DiaCalendario {
 
 interface PropiedadesCalendarioSemana {
   dias: DiaCalendario[];
-  alConfirmar: (id: string) => void;
-  alCancelar: (id: string) => void;
+  /** Cita pendiente tocada -> abre el comprobante para confirmar el pago. */
+  alConfirmarPago: (cita: PropiedadesTarjetaCita) => void;
   alVerHistoriaClinica: (cita: PropiedadesTarjetaCita) => void;
 }
 
@@ -78,8 +77,7 @@ function asignarCarriles(citas: PropiedadesTarjetaCita[]): CitaConCarril[] {
 
 export const CalendarioSemana: React.FC<PropiedadesCalendarioSemana> = ({
   dias,
-  alConfirmar,
-  alCancelar,
+  alConfirmarPago,
   alVerHistoriaClinica,
 }) => {
   return (
@@ -122,11 +120,13 @@ export const CalendarioSemana: React.FC<PropiedadesCalendarioSemana> = ({
                 const topPct = (Math.max(inicioMin, HORA_INICIO_MIN) - HORA_INICIO_MIN) / RANGO_MIN;
                 const altoPct = (Math.min(finMin, HORA_FIN_MIN) - Math.max(inicioMin, HORA_INICIO_MIN)) / RANGO_MIN;
                 const anchoPct = 100 / totalCarriles;
+                const esPendiente = cita.estado === 'pendiente';
                 return (
                   <button
                     key={cita.id}
                     type="button"
-                    onClick={() => alVerHistoriaClinica(cita)}
+                    onClick={() => (esPendiente ? alConfirmarPago(cita) : alVerHistoriaClinica(cita))}
+                    title={esPendiente ? 'Tocar para confirmar el pago' : 'Ver historia clínica'}
                     style={{
                       top: `${Math.max(0, topPct) * 100}%`,
                       height: `${Math.max(altoPct, 0.02) * 100}%`,
@@ -138,27 +138,10 @@ export const CalendarioSemana: React.FC<PropiedadesCalendarioSemana> = ({
                     <p className="font-semibold truncate">{cita.hora.split(' · ')[0]}</p>
                     <p className="truncate">{cita.nombrePaciente}</p>
                     <p className="truncate opacity-80">{cita.servicio}</p>
-                    {cita.estado === 'pendiente' && (
-                      <div className="mt-0.5 flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => alConfirmar(cita.id)}
-                          title="Confirmar pago"
-                          className="rounded bg-white/70 p-0.5 text-emerald-700 hover:bg-white"
-                        >
-                          <CheckCircle2 size={11} />
-                        </span>
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => alCancelar(cita.id)}
-                          title="Cancelar"
-                          className="rounded bg-white/70 p-0.5 text-rose-700 hover:bg-white"
-                        >
-                          <XCircle size={11} />
-                        </span>
-                      </div>
+                    {esPendiente && (
+                      <p className="mt-0.5 truncate font-semibold text-amber-700">
+                        Confirmar pago →
+                      </p>
                     )}
                   </button>
                 );
