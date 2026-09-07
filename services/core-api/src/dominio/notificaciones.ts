@@ -1,6 +1,7 @@
 import type { Db } from "../db.js";
 import { normalizarErrorDb } from "../errores.js";
 import * as integraciones from "./integraciones.js";
+import { construirCorreo } from "./correo.js";
 
 /**
  * Recordatorios de cita. `integracion.notificacion` ya estaba en el schema
@@ -185,23 +186,20 @@ export async function enviarRecordatorioPorEmail(
       }
 
       const servicio = f.servicio ?? "su cita";
+      const { texto, html } = construirCorreo({
+        titulo: `Recordatorio: ${servicio} mañana`,
+        parrafos: [`Le recordamos su cita de ${servicio} mañana.`],
+        datos: [
+          { etiqueta: "Cuándo", valor: fechaHoraBogota(f.inicia_en) },
+          ...(f.sede ? [{ etiqueta: "Dónde", valor: f.sede }] : []),
+        ],
+        nota: indicacionesPara(f.servicio),
+      });
       await integraciones.enviarCorreo(tx, {
         destinatario: f.paciente_email,
         asunto: `Recordatorio — ${servicio} mañana`,
-        texto: [
-          `Le recordamos su cita de ${servicio} mañana.`,
-          "",
-          `Cuándo: ${fechaHoraBogota(f.inicia_en)}`,
-          f.sede ? `Dónde: ${f.sede}` : "",
-          "",
-          indicacionesPara(f.servicio),
-          "",
-          "Si necesita cancelar o reprogramar, escríbanos al 311 398 1422.",
-          "",
-          "La Fisioterapeuta Li",
-        ]
-          .filter((l) => l.length > 0)
-          .join("\n"),
+        texto,
+        html,
       });
       await tx.query(
         `UPDATE integracion.notificacion

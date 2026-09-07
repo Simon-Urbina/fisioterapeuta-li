@@ -1,6 +1,7 @@
 import type { Db } from "../db.js";
 import { ErrorDominio, normalizarErrorDb } from "../errores.js";
 import * as integraciones from "./integraciones.js";
+import { construirCorreo } from "./correo.js";
 
 /**
  * Indicaciones previas por tipo de servicio (contenido real de Lina, ver
@@ -177,23 +178,21 @@ export async function verificarPago(
       for (const f of r.rows) {
         if (!f.paciente_email) continue;
         const servicio = f.servicio ?? "su cita";
+        const { texto, html } = construirCorreo({
+          titulo: "Su cita quedó confirmada",
+          parrafos: [`Su cita de ${servicio} quedó confirmada. Recibimos su pago.`],
+          datos: [
+            { etiqueta: "Cuándo", valor: fechaHoraBogota(f.inicia_en) },
+            ...(f.sede ? [{ etiqueta: "Dónde", valor: f.sede }] : []),
+          ],
+          nota: indicacionesPara(f.servicio),
+          cierre: "La esperamos.",
+        });
         await integraciones.enviarCorreo(tx, {
           destinatario: f.paciente_email,
           asunto: `Cita confirmada — ${servicio}`,
-          texto: [
-            `Su cita de ${servicio} quedó confirmada.`,
-            "",
-            `Cuándo: ${fechaHoraBogota(f.inicia_en)}`,
-            f.sede ? `Dónde: ${f.sede}` : "",
-            "",
-            indicacionesPara(f.servicio),
-            "",
-            "Recibimos su pago. La esperamos. Si necesita reprogramar, escríbanos al 311 398 1422.",
-            "",
-            "La Fisioterapeuta Li",
-          ]
-            .filter((l) => l.length > 0)
-            .join("\n"),
+          texto,
+          html,
         });
       }
 

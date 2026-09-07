@@ -6,6 +6,7 @@ import {
   Users,
   Stethoscope,
   Workflow,
+  Plug,
   History,
   BarChart3,
   LogOut,
@@ -22,6 +23,7 @@ const nav = [
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/servicios", label: "Servicios", icon: Stethoscope },
   { href: "/admin/automatizaciones", label: "Automatizaciones", icon: Workflow },
+  { href: "/admin/integraciones", label: "Integraciones", icon: Plug },
   { href: "/admin/historial", label: "Historial", icon: History },
   { href: "/admin/indicadores", label: "Indicadores", icon: BarChart3 },
 ];

@@ -5,6 +5,7 @@ import * as agenda from "./dominio/agenda.js";
 import * as pacientes from "./dominio/pacientes.js";
 import * as catalogo from "./dominio/catalogo.js";
 import * as integraciones from "./dominio/integraciones.js";
+import { construirCorreo } from "./dominio/correo.js";
 
 /**
  * Punto de entrada único para ejecutar una intención ya interpretada y (si
@@ -375,13 +376,20 @@ export async function ejecutarComando(
         // Acuse por correo (la confirmación real va cuando se verifica el
         // pago — ver dominio/pagos.ts). Solo si el paciente dejó email.
         if (paciente.email) {
+          const { texto, html } = construirCorreo({
+            titulo: "Recibimos su reserva",
+            saludo: `Hola ${paciente.nombreCompleto},`,
+            parrafos: [
+              `Recibimos su reserva de ${servicio.nombre} en ${sede.nombre}.`,
+              "Está pendiente del pago anticipado; le confirmamos la cita apenas lo verifiquemos.",
+            ],
+            datos: [{ etiqueta: "Cuándo", valor: `${fecha} a las ${hora}` }],
+          });
           await integraciones.enviarCorreo(db, {
             destinatario: paciente.email,
             asunto: "Recibimos su reserva — La Fisioterapeuta Li",
-            texto:
-              `Hola ${paciente.nombreCompleto}, recibimos su reserva de ${servicio.nombre} en ${sede.nombre} ` +
-              `para el ${fecha} a las ${hora}. Está pendiente del pago anticipado; le confirmamos la cita ` +
-              `apenas lo verifiquemos.`,
+            texto,
+            html,
           });
         }
 
@@ -465,10 +473,20 @@ export async function ejecutarComando(
       }
 
       case "enviar_correo": {
+        const asunto = exigir(entidades.asunto, "asunto");
+        const cuerpo = exigir(entidades.texto, "texto");
+        // El cuerpo ya viene redactado (lo dicta Lina): solo se le pone la
+        // identidad visual, sin agregar firma ni línea de reprogramación.
+        const { texto, html } = construirCorreo({
+          titulo: asunto,
+          parrafos: cuerpo.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.length > 0),
+          incluirPie: false,
+        });
         const resultado = await integraciones.enviarCorreo(db, {
           destinatario: exigir(entidades.destinatario, "destinatario"),
-          asunto: exigir(entidades.asunto, "asunto"),
-          texto: exigir(entidades.texto, "texto"),
+          asunto,
+          texto,
+          html,
         });
         return { ok: true, datos: resultado };
       }

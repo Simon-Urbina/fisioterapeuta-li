@@ -16,14 +16,23 @@ import { ErrorDominio, normalizarErrorDb } from "../errores.js";
 
 export async function enviarCorreo(
   db: Db,
-  opts: { destinatario: string; asunto: string; texto: string },
+  opts: { destinatario: string; asunto: string; texto: string; html?: string },
 ): Promise<{ outboxId: number }> {
   try {
+    // `html` es opcional: si no viene, el payload queda igual que siempre y
+    // google-adapter manda un correo de solo texto (multipart/alternative
+    // únicamente cuando hay versión HTML — ver construirMimeBase64).
+    const payload = {
+      destinatario: opts.destinatario,
+      asunto: opts.asunto,
+      texto: opts.texto,
+      ...(opts.html ? { html: opts.html } : {}),
+    };
     const r = await db.query<{ id: number }>(
       `INSERT INTO integracion.outbox (agregado_tipo, agregado_id, tipo_evento, destino, payload)
        VALUES ('correo_manual', 0, 'correo.enviar', 'gmail', $1::jsonb)
        RETURNING id`,
-      [JSON.stringify({ destinatario: opts.destinatario, asunto: opts.asunto, texto: opts.texto })],
+      [JSON.stringify(payload)],
     );
     return { outboxId: (r.rows[0] as { id: number }).id };
   } catch (err) {

@@ -7,7 +7,15 @@ import type { Config } from "./config.js";
  * inyecten un cliente falso — mismo criterio que `Db` en `db.ts`.
  */
 export interface GmailClient {
-  enviarCorreo: (msg: { destinatario: string; asunto: string; texto: string }) => Promise<void>;
+  enviarCorreo: (msg: { destinatario: string; asunto: string; texto: string; html?: string }) => Promise<void>;
+}
+
+export interface MensajeCorreo {
+  destinatario: string;
+  asunto: string;
+  texto: string;
+  /** Versión HTML opcional; si viene, el correo sale como multipart/alternative. */
+  html?: string;
 }
 
 export interface EventoCalendar {
@@ -31,16 +39,45 @@ export interface SheetsClient {
   actualizarFila: (spreadsheetId: string, hoja: string, fila: number, valores: (string | number)[]) => Promise<void>;
 }
 
-/** Construye el mensaje RFC 2822 mínimo y lo codifica en base64url, como pide la API de Gmail. */
-function construirMimeBase64(msg: { destinatario: string; asunto: string; texto: string }): string {
-  const mime = [
+/** Una parte MIME con su cuerpo en base64 (líneas de 76, como pide RFC 2045). */
+function parteMime(contentType: string, cuerpo: string): string {
+  const b64 = Buffer.from(cuerpo, "utf8")
+    .toString("base64")
+    .replace(/(.{76})/g, "$1\r\n");
+  return [`Content-Type: ${contentType}; charset=UTF-8`, "Content-Transfer-Encoding: base64", "", b64].join("\r\n");
+}
+
+/**
+ * Construye el mensaje RFC 2822 y lo codifica en base64url, como pide la API
+ * de Gmail. Sin `html` sale como `text/plain` (igual que siempre); con
+ * `html` sale como `multipart/alternative` — el cliente de correo elige la
+ * versión que sabe mostrar y cae al texto plano si no.
+ */
+export function construirMimeBase64(msg: MensajeCorreo): string {
+  const cabeceras = [
     `To: ${msg.destinatario}`,
     `Subject: =?UTF-8?B?${Buffer.from(msg.asunto, "utf8").toString("base64")}?=`,
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=UTF-8",
-    "",
-    msg.texto,
-  ].join("\r\n");
+  ];
+
+  let mime: string;
+  if (msg.html) {
+    const limite = `li_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+    mime = [
+      ...cabeceras,
+      `Content-Type: multipart/alternative; boundary="${limite}"`,
+      "",
+      `--${limite}`,
+      parteMime("text/plain", msg.texto),
+      `--${limite}`,
+      parteMime("text/html", msg.html),
+      `--${limite}--`,
+      "",
+    ].join("\r\n");
+  } else {
+    mime = [...cabeceras, "Content-Type: text/plain; charset=UTF-8", "", msg.texto].join("\r\n");
+  }
+
   return Buffer.from(mime, "utf8").toString("base64url");
 }
 

@@ -17,6 +17,7 @@ const PayloadCorreoSchema = z.object({
   destinatario: z.string(),
   asunto: z.string(),
   texto: z.string(),
+  html: z.string().optional(),
 });
 
 const PayloadCalendarSchema = z.object({
@@ -34,7 +35,13 @@ const PayloadSheetsSchema = z.object({
 
 async function procesarGmail(gmail: GmailClient, evento: EventoOutbox): Promise<void> {
   const payload = PayloadCorreoSchema.parse(evento.payload);
-  await gmail.enviarCorreo(payload);
+  // `html` solo se incluye si vino en el payload (exactOptionalPropertyTypes).
+  await gmail.enviarCorreo({
+    destinatario: payload.destinatario,
+    asunto: payload.asunto,
+    texto: payload.texto,
+    ...(payload.html !== undefined ? { html: payload.html } : {}),
+  });
 }
 
 /**
