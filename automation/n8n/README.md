@@ -20,29 +20,45 @@ crean hasta que se exportan a `workflows/` y se suben con
 | `recordatorios-24h.json` | Schedule cada 15 min → `POST /recordatorios/reclamar` → Split Out → **IF** `chatId` no vacío: rama sí = nodo Telegram + `POST /recordatorios/marcar-enviado`; rama no = `POST /recordatorios/enviar-email`. | Activo |
 | `avisos-confirmacion-telegram.json` | Schedule cada 2 min → `GET /confirmaciones-telegram/pendientes` → Split Out → nodo Telegram → `POST /confirmaciones-telegram/marcar`. Aviso de "cita confirmada" cuando se confirmó desde el panel web. | Activo |
 | `avisos-referidos-telegram.json` | Schedule cada 2 min → `GET /avisos-telegram/pendientes` → Split Out → nodo Telegram → `POST /avisos-telegram/marcar`. Hoy: felicitación por el descuento de referidos. | Activo |
+| `digest-diario-lina.json` | Schedule 7:00 America/Bogota → `GET /mantenimiento/digest-diario` → Split Out `datos.avisos` (uno por chat de `CORE_API_ADMIN_CHAT_IDS`) → nodo Telegram. Resumen de la agenda del día para Lina. Sin paso de marcar (es informativo). | Activo |
+| `outbox-google.json` | Schedule cada 15 s → `google-adapter POST /outbox/procesar`. Un ciclo del consumidor de `integracion.outbox`: `google-adapter` toma un lote, lo ejecuta ramificando por `destino` (gmail/calendar/sheets) y lo marca; devuelve el desglose `porDestino`. n8n marca el ritmo; `google-adapter` guarda las credenciales de Google (regla 3). | Activo |
 
 El cuerpo de cada mensaje de Telegram lo compone **core-api** (campo
-`mensajeTelegram` en la respuesta de `/recordatorios/reclamar` y
-`/confirmaciones-telegram/pendientes`; `texto` en `/avisos-telegram/pendientes`).
-El nodo de n8n solo lo reenvía — así el texto es idéntico lo mande el bot o
-n8n, y n8n no contiene lógica de negocio (regla 4).
+`mensajeTelegram` en la respuesta de `/recordatorios/reclamar`,
+`/confirmaciones-telegram/pendientes` y `/mantenimiento/digest-diario`;
+`texto` en `/avisos-telegram/pendientes`). El nodo de n8n solo lo reenvía —
+así el texto es idéntico lo mande el bot o n8n, y n8n no contiene lógica de
+negocio (regla 4).
 
 El nodo **Telegram** usa una credencial `telegramApi` creada a mano en la
 interfaz (token del bot de desarrollo). Los `.json` la referencian por id
 (`xqHTHtpRqUjUSwQT`); si se recrea la credencial, ese id cambia y hay que
-corregirlo en los tres workflows.
+corregirlo en los cuatro workflows. Todos llevan `appendAttribution: false`
+para que el mensaje salga sin la firma "sent with n8n".
 
-Con estos tres activos, el bot NO debe barrer lo mismo: poner
-`BOT_VIGILANCIA_NOTIFICACIONES=false` en `apps/telegram-bot/.env.local`
-(el barrido de PAGOS del bot no se toca — es interactivo). Tener los dos
-barridos un rato es seguro (el "reclamar" en la base es atómico), pero
-duplica trabajo.
+**Barridos que se apagan cuando n8n los toma** (para no duplicar):
+- `apps/telegram-bot/.env.local` → `BOT_VIGILANCIA_NOTIFICACIONES=false`
+  (recordatorios, confirmaciones, avisos; el barrido de PAGOS no se toca —
+  es interactivo).
+- `services/google-adapter/.env.local` → `GOOGLE_ADAPTER_OUTBOX_POLL=false`
+  (el `setInterval` propio del outbox; `INTERNAL_API_KEY` protege
+  `POST /outbox/procesar`).
+
+Tener los dos un rato es seguro (`integracion.tomar_pendientes` usa
+`FOR UPDATE SKIP LOCKED`, y `reclamar` de recordatorios es `ON CONFLICT DO
+NOTHING`), pero duplica trabajo.
 
 ### Pendiente (plan)
 
-- `digest-diario-lina` — Schedule 7:00 America/Bogota → `GET /citas/hoy` →
-  Telegram a Lina con el resumen del día. Falta componer el texto en
-  core-api (`mensajeTelegram`) y armar el workflow.
+- **Google Drive**: no está implementado en ningún lado (`core-api` encola
+  `destino='drive'` pero `google-adapter` no lo maneja, y `buscar_archivo`
+  responde 501). Hay que implementarlo en `google-adapter` primero, luego
+  cae solo en `outbox-google` (ya ramifica por `destino`).
+- **NLU por n8n**: hoy el bot llama al servicio NLU directo y solo manda a
+  n8n la intención ya interpretada. El diagrama "Flujo conversacional" del
+  README raíz pone al NLU pasando por n8n — sería extender `recibir-comando`
+  para que llame a `NLU_URL/interpretar` (requiere que el bot mande el texto
+  crudo).
 
 ### Workflows hechos a mano
 
