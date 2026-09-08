@@ -56,6 +56,9 @@ const RecordatorioPendiente = z.object({
   iniciaEn: z.string(),
   chatId: z.string().nullable(),
   pacienteEmail: z.string().nullable(),
+  // Cuerpo ya redactado por core-api: el bot solo lo reenvía (mismo texto
+  // que usa n8n cuando orquesta este flujo).
+  mensajeTelegram: z.string(),
 });
 export type RecordatorioPendiente = z.infer<typeof RecordatorioPendiente>;
 
@@ -156,6 +159,8 @@ const ConfirmacionTgPendiente = z.object({
   sede: z.string().nullable(),
   iniciaEn: z.string(),
   chatId: z.string(),
+  // Cuerpo ya redactado por core-api: el bot solo lo reenvía.
+  mensajeTelegram: z.string(),
 });
 export type ConfirmacionTgPendiente = z.infer<typeof ConfirmacionTgPendiente>;
 

@@ -51,6 +51,14 @@ const EnvSchema = z
     // Rate limit por chat (mensajes entrantes por minuto).
     BOT_RATE_LIMIT_POR_MINUTO: z.coerce.number().int().min(1).max(600).default(20),
 
+    // Barridos periódicos que el bot hace por su cuenta: recordatorio 24h,
+    // aviso de "cita confirmada" desde la web y avisos simples (felicitación
+    // de referidos). Con n8n orquestando esos flujos (ver automation/n8n/),
+    // poner en "false" para no tener dos barridos haciendo lo mismo. El
+    // barrido de PAGOS no entra acá: es interactivo (Lina confirma/rechaza)
+    // y siempre lo hace el bot.
+    BOT_VIGILANCIA_NOTIFICACIONES: z.enum(["true", "false"]).default("true"),
+
     TIMEZONE: z.string().min(1).default("America/Bogota"),
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])

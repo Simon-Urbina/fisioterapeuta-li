@@ -18,18 +18,35 @@ function main(): void {
   }
 
   // Le avisa a Lina por Telegram cuando entra un pago desde el checkout de la
-  // web (ver telegram/vigilanciaPagos.ts).
+  // web (ver telegram/vigilanciaPagos.ts). Este SIEMPRE lo hace el bot: es
+  // interactivo (Lina confirma/rechaza desde el chat).
   const detenerVigilancia = iniciarVigilanciaPagos(bot, { cfg, cApi: coreApi });
 
-  // Recordatorio de cita 24h antes (ver telegram/vigilanciaRecordatorios.ts).
-  const detenerRecordatorios = iniciarVigilanciaRecordatorios(bot, { cfg, cApi: coreApi });
+  // Recordatorio 24h, aviso de "cita confirmada" desde la web y avisos
+  // simples. Con BOT_VIGILANCIA_NOTIFICACIONES=false los orquesta n8n
+  // (automation/n8n/) y el bot no los barre, para no duplicar.
+  const noBarrer = (): void => {
+    /* no se inició este barrido: no hay timer que limpiar */
+  };
+  const notificacionesLasOrquestaN8n = cfg.BOT_VIGILANCIA_NOTIFICACIONES === "false";
 
-  // Aviso "cita confirmada" cuando se confirmó desde el panel web (ver
-  // telegram/vigilanciaConfirmaciones.ts).
-  const detenerConfirmaciones = iniciarVigilanciaConfirmaciones(bot, { cfg, cApi: coreApi });
+  const detenerRecordatorios = notificacionesLasOrquestaN8n
+    ? noBarrer
+    : iniciarVigilanciaRecordatorios(bot, { cfg, cApi: coreApi });
 
-  // Avisos simples con cuerpo ya redactado (felicitación por referidos, etc.).
-  const detenerAvisos = iniciarVigilanciaAvisos(bot, { cfg, cApi: coreApi });
+  const detenerConfirmaciones = notificacionesLasOrquestaN8n
+    ? noBarrer
+    : iniciarVigilanciaConfirmaciones(bot, { cfg, cApi: coreApi });
+
+  const detenerAvisos = notificacionesLasOrquestaN8n
+    ? noBarrer
+    : iniciarVigilanciaAvisos(bot, { cfg, cApi: coreApi });
+
+  if (notificacionesLasOrquestaN8n) {
+    logger.info(
+      "BOT_VIGILANCIA_NOTIFICACIONES=false: recordatorios, confirmaciones y avisos los orquesta n8n; el bot no los barre.",
+    );
+  }
 
   for (const señal of ["SIGINT", "SIGTERM"] as const) {
     process.once(señal, () => {
