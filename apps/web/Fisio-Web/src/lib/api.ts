@@ -121,6 +121,8 @@ export interface CheckoutApi {
   moneda: string | null;
   nequi: string;
   codigoReferido: string | null;
+  /** Descuento del programa de referidos aplicado a este pago, si lo hay. */
+  descuento: { porcentaje: number; montoOriginal: number; montoDescontado: number } | null;
 }
 
 export interface EstadoPagoApi {

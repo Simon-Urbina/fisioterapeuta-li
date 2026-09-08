@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Calendar, MapPin, Stethoscope, Landmark, ShieldCheck } from "lucide-react";
+import { Calendar, MapPin, Stethoscope, Landmark, ShieldCheck, Gift } from "lucide-react";
 import { Navbar } from "@/components/site/navbar";
 import { Footer } from "@/components/site/footer";
 import { Container } from "@/components/ui/container";
@@ -115,9 +115,28 @@ export default function PagoSimuladoPage() {
                       <p className="text-xs text-ink-500">Servicio</p>
                     </div>
                     <span className="shrink-0 text-sm font-bold text-ink-900">
-                      {montoLegible(data.monto, data.moneda)}
+                      {montoLegible(data.descuento ? data.descuento.montoOriginal : data.monto, data.moneda)}
                     </span>
                   </div>
+
+                  {data.descuento && (
+                    <div className="flex items-start gap-3.5 bg-emerald-50/60 px-6 py-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                        <Gift size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-emerald-800">
+                          Descuento por referidos · −{data.descuento.porcentaje}%
+                        </p>
+                        <p className="text-xs text-emerald-600">
+                          ¡Gracias por recomendarnos! Se aplicó tu beneficio por 5 referidos.
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-bold text-emerald-700">
+                        −{montoLegible(data.descuento.montoDescontado, data.moneda)}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="flex items-start gap-3.5 px-6 py-4">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">

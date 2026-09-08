@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Search, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AdminShell } from '../../components/admin/admin-shell';
@@ -93,47 +93,65 @@ export const Agenda: React.FC = () => {
   const [citaPago, setCitaPago] = useState<PropiedadesTarjetaCita | null>(null);
   const navigate = useNavigate();
 
-  // Carga por semana desde core-api. Sin sesión -> al login. Si la API falla
-  // por otra razón, se muestran datos de ejemplo para no dejar el panel vacío.
-  useEffect(() => {
-    if (!leerToken()) {
-      navigate('/admin/login');
-      return;
-    }
-    let vivo = true;
-    (async () => {
+  // Carga las citas de la semana desde core-api. `silencioso` = refresco de
+  // fondo (no muestra el spinner ni cae a datos de ejemplo si falla, para no
+  // parpadear ni pisar lo que hay). Sin sesión -> al login.
+  const cargarCitas = useCallback(
+    async (silencioso = false): Promise<void> => {
+      if (!leerToken()) {
+        navigate('/admin/login');
+        return;
+      }
       try {
-        setCargando(true);
+        if (!silencioso) setCargando(true);
         const citas = await api.citas(semanaInicio, sumarDias(semanaInicio, 7));
-        if (vivo) setListaCitas(citas.map(aTarjeta));
+        setListaCitas(citas.map(aTarjeta));
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           navigate('/admin/login');
           return;
         }
-        if (vivo) {
-          setListaCitas(
-            reservasEjemplo.map((r) => ({
-              id: r.id,
-              pacienteId: null,
-              iniciaEnIso: `${r.fecha}T${r.hora}:00-05:00`,
-              terminaEnIso: `${r.fecha}T${r.hora}:00-05:00`,
-              nombrePaciente: r.cliente,
-              hora: r.hora,
-              servicio: r.servicio,
-              estado: r.estado as PropiedadesTarjetaCita['estado'],
-              notas: '',
-            })),
-          );
-        }
+        if (silencioso) return; // un fallo puntual del refresco no toca la vista
+        setListaCitas(
+          reservasEjemplo.map((r) => ({
+            id: r.id,
+            pacienteId: null,
+            iniciaEnIso: `${r.fecha}T${r.hora}:00-05:00`,
+            terminaEnIso: `${r.fecha}T${r.hora}:00-05:00`,
+            nombrePaciente: r.cliente,
+            hora: r.hora,
+            servicio: r.servicio,
+            estado: r.estado as PropiedadesTarjetaCita['estado'],
+            notas: '',
+          })),
+        );
       } finally {
-        if (vivo) setCargando(false);
+        if (!silencioso) setCargando(false);
       }
-    })();
-    return () => {
-      vivo = false;
+    },
+    [navigate, semanaInicio],
+  );
+
+  useEffect(() => {
+    void cargarCitas();
+  }, [cargarCitas]);
+
+  // Casi tiempo real: como las citas también cambian desde el bot de Telegram
+  // (crear, confirmar, cancelar...), se refresca en segundo plano cada 8 s
+  // mientras la pestaña está visible, y al volver a ella de inmediato.
+  useEffect(() => {
+    const refrescar = (): void => {
+      if (!document.hidden) void cargarCitas(true);
     };
-  }, [navigate, semanaInicio]);
+    const id = window.setInterval(refrescar, 8000);
+    document.addEventListener('visibilitychange', refrescar);
+    window.addEventListener('focus', refrescar);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', refrescar);
+      window.removeEventListener('focus', refrescar);
+    };
+  }, [cargarCitas]);
 
   const citasFiltradas = useMemo(() => {
     const term = normalizarTexto(q.trim());
