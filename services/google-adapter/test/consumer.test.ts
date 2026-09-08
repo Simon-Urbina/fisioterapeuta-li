@@ -1,9 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { crearDbFalsa } from "./fakeDb.js";
-import { procesarPendientes } from "../src/consumer.js";
-import type { CalendarClient, GmailClient } from "../src/googleClients.js";
+import { procesarPendientes, type ClientesGoogle } from "../src/consumer.js";
+import type { CalendarClient, DriveClient, GmailClient } from "../src/googleClients.js";
 
-function clientesFalsos(overrides: Partial<{ gmail: Partial<GmailClient>; calendar: Partial<CalendarClient> }> = {}) {
+function clientesFalsos(
+  overrides: Partial<{
+    gmail: Partial<GmailClient>;
+    calendar: Partial<CalendarClient>;
+    drive: Partial<DriveClient>;
+    driveRootFolderId: string;
+  }> = {},
+): ClientesGoogle {
   const gmail: GmailClient = {
     enviarCorreo: vi.fn().mockResolvedValue(undefined),
     ...overrides.gmail,
@@ -14,7 +21,17 @@ function clientesFalsos(overrides: Partial<{ gmail: Partial<GmailClient>; calend
     eliminarEvento: vi.fn().mockResolvedValue(undefined),
     ...overrides.calendar,
   };
-  return { gmail, calendar };
+  const base: ClientesGoogle = { gmail, calendar };
+  if (overrides.drive || overrides.driveRootFolderId) {
+    base.drive = {
+      asegurarCarpeta: vi.fn().mockResolvedValue({ id: "folder-x" }),
+      subirArchivo: vi.fn().mockResolvedValue({ id: "file-1", nombre: "x", webViewLink: "https://drive/x" }),
+      buscarPorNombre: vi.fn().mockResolvedValue([]),
+      ...overrides.drive,
+    };
+    base.driveRootFolderId = overrides.driveRootFolderId ?? "root-folder";
+  }
+  return base;
 }
 
 function filaOutbox(overrides: Partial<Record<string, unknown>>): Record<string, unknown> {
@@ -125,15 +142,63 @@ describe("consumer/procesarPendientes", () => {
     expect(clientes.calendar.eliminarEvento).not.toHaveBeenCalled();
   });
 
-  it("destino no soportado (drive): marca fallido en vez de quedar atascado", async () => {
+  it("drive sin GOOGLE_DRIVE_ROOT_FOLDER_ID: marca fallido en vez de quedar atascado", async () => {
     const { db, llamadas } = crearDbFalsa([
       [filaOutbox({ destino: "drive", tipo_evento: "drive.crear_carpeta", payload: { carpeta: "x" } })],
       [], // marcarFallido
     ]);
-    const clientes = clientesFalsos();
+    const clientes = clientesFalsos(); // sin drive configurado
+    const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
+    expect(r).toMatchObject({ tomados: 1, procesados: 0, fallidos: 1, porDestino: { drive: { ok: 0, fallo: 1 } } });
+    expect(llamadas[1]?.valores[1]).toBe("fallido");
+  });
+
+  it("drive.carpeta_paciente: crea 'Pacientes/<nombre>/' y guarda el mapeo", async () => {
+    const { db, llamadas } = crearDbFalsa([
+      [
+        filaOutbox({
+          destino: "drive",
+          tipo_evento: "drive.carpeta_paciente",
+          agregado_tipo: "paciente",
+          agregado_id: 9,
+          payload: { paciente_id: 9, nombre: "Laura Gómez — 1052384719" },
+        }),
+      ],
+      [], // buscarCarpetaPaciente -> sin mapeo
+      [], // guardarCarpetaPaciente (INSERT ON CONFLICT)
+      [], // marcarCompletado
+    ]);
+    const clientes = clientesFalsos({
+      drive: {
+        asegurarCarpeta: vi
+          .fn()
+          .mockResolvedValueOnce({ id: "folder-pacientes" })
+          .mockResolvedValueOnce({ id: "folder-laura" }),
+      },
+    });
+    const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
+    expect(r).toMatchObject({ tomados: 1, procesados: 1, fallidos: 0, porDestino: { drive: { ok: 1, fallo: 0 } } });
+    expect(clientes.drive?.asegurarCarpeta).toHaveBeenNthCalledWith(1, "Pacientes", "root-folder");
+    expect(clientes.drive?.asegurarCarpeta).toHaveBeenNthCalledWith(2, "Laura Gómez — 1052384719", "folder-pacientes");
+    expect(llamadas[2]?.texto).toContain("integracion.google_recurso");
+    expect(llamadas[2]?.valores).toEqual(["paciente", 9, "folder-pacientes", "folder-laura"]);
+  });
+
+  it("drive.archivar_comprobante sin TELEGRAM_BOT_TOKEN: marca fallido antes de tocar Drive", async () => {
+    const { db } = crearDbFalsa([
+      [
+        filaOutbox({
+          destino: "drive",
+          tipo_evento: "drive.archivar_comprobante",
+          payload: { paciente_id: 9, paciente_nombre: "Laura", file_id: "AgAC123", nombre_archivo: "2026-09-08 comprobante" },
+        }),
+      ],
+      [], // marcarFallido
+    ]);
+    const clientes = clientesFalsos({ driveRootFolderId: "root-folder" }); // drive sí, token no
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
     expect(r).toMatchObject({ tomados: 1, procesados: 0, fallidos: 1 });
-    expect(llamadas[1]?.valores[1]).toBe("fallido");
+    expect(clientes.drive?.subirArchivo).not.toHaveBeenCalled();
   });
 
   it("payload inválido para gmail: marca fallido sin llegar a enviar", async () => {

@@ -82,6 +82,59 @@ export async function borrarMapeosSheet(db: Db): Promise<void> {
   await db.query(`DELETE FROM integracion.google_recurso WHERE servicio = 'sheets'`);
 }
 
+// ---------------------------------------------------------------------------
+//  Drive: carpeta del paciente y su subcarpeta de comprobantes.
+//  `recurso_id` guarda el id de carpeta de Drive; `contenedor_id`, el id de
+//  la carpeta padre (la raíz para "paciente", la del paciente para
+//  "paciente_comprobantes"). La restricción UNIQUE (entidad_tipo,
+//  entidad_id, servicio) permite un mapeo por tipo y paciente.
+// ---------------------------------------------------------------------------
+
+const ENTIDAD_CARPETA_PACIENTE = "paciente";
+const ENTIDAD_CARPETA_COMPROBANTES = "paciente_comprobantes";
+
+async function buscarCarpetaDrive(db: Db, entidadTipo: string, pacienteId: number): Promise<string | null> {
+  const r = await db.query<{ recurso_id: string }>(
+    `SELECT recurso_id FROM integracion.google_recurso
+      WHERE entidad_tipo = $1 AND entidad_id = $2 AND servicio = 'drive'`,
+    [entidadTipo, pacienteId],
+  );
+  return r.rows[0]?.recurso_id ?? null;
+}
+
+async function guardarCarpetaDrive(
+  db: Db,
+  entidadTipo: string,
+  pacienteId: number,
+  opts: { carpetaId: string; padreId: string },
+): Promise<void> {
+  await db.query(
+    `INSERT INTO integracion.google_recurso (entidad_tipo, entidad_id, servicio, contenedor_id, recurso_id)
+     VALUES ($1, $2, 'drive', $3, $4)
+     ON CONFLICT (entidad_tipo, entidad_id, servicio)
+     DO UPDATE SET contenedor_id = EXCLUDED.contenedor_id, recurso_id = EXCLUDED.recurso_id, sincronizado_en = now()`,
+    [entidadTipo, pacienteId, opts.padreId, opts.carpetaId],
+  );
+}
+
+export const buscarCarpetaPaciente = (db: Db, pacienteId: number): Promise<string | null> =>
+  buscarCarpetaDrive(db, ENTIDAD_CARPETA_PACIENTE, pacienteId);
+
+export const guardarCarpetaPaciente = (
+  db: Db,
+  pacienteId: number,
+  opts: { carpetaId: string; padreId: string },
+): Promise<void> => guardarCarpetaDrive(db, ENTIDAD_CARPETA_PACIENTE, pacienteId, opts);
+
+export const buscarCarpetaComprobantes = (db: Db, pacienteId: number): Promise<string | null> =>
+  buscarCarpetaDrive(db, ENTIDAD_CARPETA_COMPROBANTES, pacienteId);
+
+export const guardarCarpetaComprobantes = (
+  db: Db,
+  pacienteId: number,
+  opts: { carpetaId: string; padreId: string },
+): Promise<void> => guardarCarpetaDrive(db, ENTIDAD_CARPETA_COMPROBANTES, pacienteId, opts);
+
 const ENTIDAD_TIPO_PACIENTE = "reserva_paciente";
 
 /** Evento en el Calendar PERSONAL del paciente (fase 3) — entidad_tipo distinto, ver comentario arriba. */

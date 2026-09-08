@@ -7,6 +7,7 @@ import {
   construirGmailClient,
   construirCalendarClient,
   construirSheetsClient,
+  construirDriveClient,
 } from "./googleClients.js";
 import { procesarPendientes, type ClientesGoogle } from "./consumer.js";
 
@@ -31,10 +32,18 @@ async function main(): Promise<void> {
       calendar: construirCalendarClient(auth),
       sheets: construirSheetsClient(auth),
       sheetsSpreadsheetId: cfg.GOOGLE_SHEETS_SPREADSHEET_ID,
+      drive: construirDriveClient(auth),
+      driveRootFolderId: cfg.GOOGLE_DRIVE_ROOT_FOLDER_ID,
+      telegramBotToken: cfg.TELEGRAM_BOT_TOKEN,
     };
     if (!cfg.GOOGLE_SHEETS_SPREADSHEET_ID) {
       logger.warn(
         "GOOGLE_SHEETS_SPREADSHEET_ID no configurado: los respaldos de reservas en Sheets quedarán en 'fallido' hasta que se agregue.",
+      );
+    }
+    if (!cfg.GOOGLE_DRIVE_ROOT_FOLDER_ID) {
+      logger.warn(
+        "GOOGLE_DRIVE_ROOT_FOLDER_ID no configurado: los eventos destino='drive' del outbox quedarán en 'fallido' hasta que se agregue.",
       );
     }
   }

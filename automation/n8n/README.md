@@ -48,12 +48,26 @@ Tener los dos un rato es seguro (`integracion.tomar_pendientes` usa
 `FOR UPDATE SKIP LOCKED`, y `reclamar` de recordatorios es `ON CONFLICT DO
 NOTHING`), pero duplica trabajo.
 
+### Google Drive
+
+Ya implementado y cae dentro de `outbox-google` (ramifica por `destino='drive'`):
+- **Carpeta por paciente** (`drive.carpeta_paciente`): al registrar un
+  paciente, `core-api` encola la creación de `Pacientes/<Nombre> — <doc>/`.
+  Idempotente (google-adapter mira `integracion.google_recurso` antes de crear).
+- **Comprobante de pago** (`drive.archivar_comprobante`): al registrar un
+  pago con foto, google-adapter baja el archivo de Telegram por su `file_id`
+  y lo sube a `Pacientes/<Nombre>/Comprobantes/`.
+- **`buscar_archivo`** (intent): `core-api` llama por HTTP a
+  `google-adapter GET /drive/buscar` (no habla con Google directo).
+
+Necesita en `services/google-adapter/.env.local`: `GOOGLE_DRIVE_ROOT_FOLDER_ID`
+(carpeta raíz en el Drive de la demo) y `TELEGRAM_BOT_TOKEN` (para bajar la
+foto). Sin la raíz, los eventos `destino='drive'` quedan en `fallido`.
+
 ### Pendiente (plan)
 
-- **Google Drive**: no está implementado en ningún lado (`core-api` encola
-  `destino='drive'` pero `google-adapter` no lo maneja, y `buscar_archivo`
-  responde 501). Hay que implementarlo en `google-adapter` primero, luego
-  cae solo en `outbox-google` (ya ramifica por `destino`).
+- **Drive, fase 2**: consentimiento (Ley 1581) y exportación de la historia
+  clínica a la carpeta del paciente. El andamiaje ya está.
 - **NLU por n8n**: hoy el bot llama al servicio NLU directo y solo manda a
   n8n la intención ya interpretada. El diagrama "Flujo conversacional" del
   README raíz pone al NLU pasando por n8n — sería extender `recibir-comando`

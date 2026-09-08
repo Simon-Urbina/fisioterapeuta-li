@@ -17,11 +17,29 @@ incluido n8n, habla con Google directamente.
 - **`GET /health`** — chequea PostgreSQL.
 - Usa **una sola cuenta de Google (la de Lina/Workspace)** para todo esto.
 
+## Drive
+
+El consumidor maneja `destino='drive'` con estos `tipo_evento`:
+- `drive.carpeta_paciente` — crea `Pacientes/<nombre>/` bajo
+  `GOOGLE_DRIVE_ROOT_FOLDER_ID`. Idempotente: mira `integracion.google_recurso`
+  (entidad_tipo `paciente`, servicio `drive`) antes de crear.
+- `drive.archivar_comprobante` — asegura la carpeta del paciente y su
+  subcarpeta `Comprobantes/`, baja la foto de Telegram por `file_id`
+  (`TELEGRAM_BOT_TOKEN`) y la sube.
+- `drive.crear_carpeta` — carpeta suelta bajo la raíz (intent `crear_carpeta`).
+
+`GET /drive/buscar?q=...[&paciente_id=...]` — búsqueda por nombre para el
+intent `buscar_archivo` (lo llama `core-api`). Guard `X-Internal-Key`. Solo
+ve lo que creó la app (scope `drive.file`).
+
+Sin `GOOGLE_DRIVE_ROOT_FOLDER_ID`, los eventos `destino='drive'` quedan
+`fallido` y terminan `descartado` tras agotar los reintentos — no bloquean
+Gmail/Calendar/Sheets.
+
 ## Qué falta (fuera de alcance de esta sesión)
 
-- Drive (`crear_carpeta`, `buscar_archivo`) y Sheets: el outbox ya soporta
-  `destino='drive'`, pero este consumidor todavía no lo maneja — los eventos
-  quedan `fallido` y terminan `descartado` tras agotar los reintentos.
+- Drive fase 2: consentimiento (Ley 1581) y exportación de la historia
+  clínica a la carpeta del paciente.
 - Fase 3 (Calendar personal del paciente, opcional): endpoints
   `/oauth/paciente/iniciar` y `/oauth/callback`, ver más abajo si ya están
   construidos al momento de leer esto.

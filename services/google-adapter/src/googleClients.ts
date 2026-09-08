@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { google } from "googleapis";
 import type { Config } from "./config.js";
 
@@ -39,6 +40,26 @@ export interface SheetsClient {
   actualizarFila: (spreadsheetId: string, hoja: string, fila: number, valores: (string | number)[]) => Promise<void>;
   /** Borra todas las filas de datos de la hoja (deja solo el encabezado). Para re-sincronizar desde cero. */
   limpiarHoja: (spreadsheetId: string, hoja: string) => Promise<void>;
+}
+
+export interface ArchivoDrive {
+  id: string;
+  nombre: string;
+  webViewLink: string;
+}
+
+export interface DriveClient {
+  /** Carpeta con ese nombre bajo `parentId`; la crea si no existe (idempotente). */
+  asegurarCarpeta: (nombre: string, parentId: string) => Promise<{ id: string }>;
+  /** Sube un archivo dentro de `parentId`. Si ya hay uno con ese nombre, agrega un sufijo. */
+  subirArchivo: (opts: {
+    nombre: string;
+    parentId: string;
+    mimeType: string;
+    contenido: Buffer;
+  }) => Promise<ArchivoDrive>;
+  /** Archivos cuyo nombre contiene `texto` (dentro de `parentId` si se pasa). Solo ve lo que creó la app (scope drive.file). */
+  buscarPorNombre: (texto: string, parentId?: string) => Promise<ArchivoDrive[]>;
 }
 
 /** Una parte MIME con su cuerpo en base64 (líneas de 76, como pide RFC 2045). */
@@ -257,6 +278,66 @@ export function construirCalendarClient(auth: InstanceType<typeof google.auth.OA
           (err as { response?: { status?: number } }).response?.status;
         if (status !== 404 && status !== 410) throw err;
       }
+    },
+  };
+}
+
+/** Escapa una comilla simple para meterla en el `q` de la API de Drive. */
+function escaparQ(texto: string): string {
+  return texto.replace(/'/g, "\\'");
+}
+
+const MIME_CARPETA = "application/vnd.google-apps.folder";
+
+export function construirDriveClient(auth: InstanceType<typeof google.auth.OAuth2>): DriveClient {
+  const drive = google.drive({ version: "v3", auth });
+
+  return {
+    async asegurarCarpeta(nombre, parentId) {
+      const q = [
+        `name = '${escaparQ(nombre)}'`,
+        `mimeType = '${MIME_CARPETA}'`,
+        `'${escaparQ(parentId)}' in parents`,
+        "trashed = false",
+      ].join(" and ");
+      const encontrada = await drive.files.list({ q, fields: "files(id)", pageSize: 1 });
+      const existente = encontrada.data.files?.[0]?.id;
+      if (existente) return { id: existente };
+
+      const creada = await drive.files.create({
+        requestBody: { name: nombre, mimeType: MIME_CARPETA, parents: [parentId] },
+        fields: "id",
+      });
+      const id = creada.data.id;
+      if (!id) throw new Error("Drive no devolvió id al crear la carpeta.");
+      return { id };
+    },
+
+    async subirArchivo(opts) {
+      const r = await drive.files.create({
+        requestBody: { name: opts.nombre, parents: [opts.parentId] },
+        media: { mimeType: opts.mimeType, body: Readable.from(opts.contenido) },
+        fields: "id, name, webViewLink",
+      });
+      const { id, name, webViewLink } = r.data;
+      if (!id) throw new Error("Drive no devolvió id al subir el archivo.");
+      return { id, nombre: name ?? opts.nombre, webViewLink: webViewLink ?? "" };
+    },
+
+    async buscarPorNombre(texto, parentId) {
+      const partes = [`name contains '${escaparQ(texto)}'`, "trashed = false"];
+      if (parentId) partes.push(`'${escaparQ(parentId)}' in parents`);
+      const r = await drive.files.list({
+        q: partes.join(" and "),
+        fields: "files(id, name, webViewLink)",
+        pageSize: 20,
+        orderBy: "modifiedTime desc",
+      });
+      return (r.data.files ?? []).map((f) => ({
+        id: f.id ?? "",
+        nombre: f.name ?? "",
+        webViewLink: f.webViewLink ?? "",
+      }));
     },
   };
 }

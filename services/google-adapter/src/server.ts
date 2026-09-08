@@ -79,10 +79,11 @@ export function construirServidor(
 ): FastifyInstance {
   const app = Fastify({ logger: opcionesLog() });
 
-  // Guard solo para /outbox/*: n8n manda X-Internal-Key. Los redirects OAuth
-  // (navegador) y /health quedan abiertos como estaban.
+  // Guard para las rutas internas (/outbox/*, /drive/*): n8n y core-api
+  // mandan X-Internal-Key. Los redirects OAuth (navegador) y /health quedan
+  // abiertos como estaban.
   app.addHook("onRequest", async (req, reply) => {
-    if (!req.url.startsWith("/outbox")) return;
+    if (!req.url.startsWith("/outbox") && !req.url.startsWith("/drive")) return;
     if (!cfg?.INTERNAL_API_KEY) return; // sin secreto configurado: local, sin guard
     const header = req.headers["x-internal-key"];
     const valor = Array.isArray(header) ? header[0] : header;
@@ -114,6 +115,34 @@ export function construirServidor(
       return { ok: true, datos };
     } catch (err) {
       app.log.error({ err: err instanceof Error ? err.message : String(err) }, "outbox/procesar falló");
+      return reply.code(500).send({ ok: false, error: "error_interno" });
+    }
+  });
+
+  // Búsqueda de archivos en Drive por nombre (intent `buscar_archivo`).
+  // core-api la llama por HTTP porque no habla con Google directo. Con
+  // `paciente_id` limita la búsqueda a la carpeta de ese paciente. Solo ve
+  // lo que creó la app (scope drive.file).
+  const BuscarQuery = z.object({
+    q: z.string().trim().min(1).max(120),
+    paciente_id: z.coerce.number().int().positive().optional(),
+  });
+  app.get("/drive/buscar", async (req, reply) => {
+    if (!clientes?.drive) {
+      return reply.code(503).send({ ok: false, error: "no_configurado" });
+    }
+    const parsed = BuscarQuery.safeParse(req.query);
+    if (!parsed.success) return reply.code(422).send({ ok: false, error: "parametros_invalidos" });
+    try {
+      const parentId = parsed.data.paciente_id
+        ? ((await recursos.buscarCarpetaPaciente(db, parsed.data.paciente_id)) ?? undefined)
+        : undefined;
+      // Con paciente_id pero sin carpeta mapeada: no hay nada archivado todavía.
+      if (parsed.data.paciente_id && !parentId) return { ok: true, datos: { archivos: [] } };
+      const archivos = await clientes.drive.buscarPorNombre(parsed.data.q, parentId);
+      return { ok: true, datos: { archivos } };
+    } catch (err) {
+      app.log.error({ err: err instanceof Error ? err.message : String(err) }, "drive/buscar falló");
       return reply.code(500).send({ ok: false, error: "error_interno" });
     }
   });

@@ -1,6 +1,13 @@
 import { z } from "zod";
 import type { Db } from "./db.js";
-import type { CalendarClient, EventoCalendar, GmailClient, SheetsClient } from "./googleClients.js";
+import type {
+  CalendarClient,
+  DriveClient,
+  EventoCalendar,
+  GmailClient,
+  SheetsClient,
+} from "./googleClients.js";
+import { descargarArchivoTelegram } from "./telegram.js";
 import * as outbox from "./dominio/outbox.js";
 import type { EventoOutbox } from "./dominio/outbox.js";
 import * as citas from "./dominio/citas.js";
@@ -11,6 +18,11 @@ export interface ClientesGoogle {
   calendar: CalendarClient;
   sheets?: SheetsClient | undefined;
   sheetsSpreadsheetId?: string | undefined;
+  drive?: DriveClient | undefined;
+  /** Carpeta raíz en Drive bajo la que va "Pacientes/". */
+  driveRootFolderId?: string | undefined;
+  /** Token del bot para bajar la foto de un comprobante por su file_id. */
+  telegramBotToken?: string | undefined;
 }
 
 const PayloadCorreoSchema = z.object({
@@ -32,6 +44,26 @@ const PayloadSheetsSchema = z.object({
   sede: z.string(),
   estado: z.string(),
 });
+
+// Carpeta del paciente (organización automática): "Pacientes/<nombre>/".
+const PayloadCarpetaPacienteSchema = z.object({
+  paciente_id: z.number(),
+  nombre: z.string(),
+});
+
+// Carpeta suelta pedida a mano por el intent `crear_carpeta`.
+const PayloadCarpetaSchema = z.object({ carpeta: z.string() });
+
+// Comprobante de pago (foto de Telegram) → "Pacientes/<nombre>/Comprobantes/".
+const PayloadComprobanteSchema = z.object({
+  paciente_id: z.number(),
+  paciente_nombre: z.string(),
+  file_id: z.string(),
+  nombre_archivo: z.string(),
+});
+
+const CARPETA_PACIENTES = "Pacientes";
+const CARPETA_COMPROBANTES = "Comprobantes";
 
 async function procesarGmail(gmail: GmailClient, evento: EventoOutbox): Promise<void> {
   const payload = PayloadCorreoSchema.parse(evento.payload);
@@ -134,6 +166,76 @@ async function procesarSheets(db: Db, clientes: ClientesGoogle, evento: EventoOu
   await recursos.guardarFilaSheetReserva(db, evento.agregadoId, { hoja: HOJA_RESERVAS, fila });
 }
 
+/**
+ * Devuelve el id de la carpeta del paciente en Drive, creándola (y
+ * "Pacientes/" si hace falta) la primera vez. `integracion.google_recurso`
+ * recuerda el mapeo paciente↔carpeta para no volver a buscar/crear.
+ */
+async function asegurarCarpetaPaciente(
+  db: Db,
+  drive: DriveClient,
+  rootId: string,
+  pacienteId: number,
+  nombre: string,
+): Promise<string> {
+  const yaMapeada = await recursos.buscarCarpetaPaciente(db, pacienteId);
+  if (yaMapeada) return yaMapeada;
+
+  const pacientes = await drive.asegurarCarpeta(CARPETA_PACIENTES, rootId);
+  const carpeta = await drive.asegurarCarpeta(nombre, pacientes.id);
+  await recursos.guardarCarpetaPaciente(db, pacienteId, { carpetaId: carpeta.id, padreId: pacientes.id });
+  return carpeta.id;
+}
+
+async function procesarDrive(db: Db, clientes: ClientesGoogle, evento: EventoOutbox): Promise<void> {
+  if (!clientes.drive || !clientes.driveRootFolderId) {
+    throw new Error("GOOGLE_DRIVE_ROOT_FOLDER_ID no está configurado: no se puede organizar Drive.");
+  }
+  const { drive, driveRootFolderId: rootId } = clientes;
+
+  if (evento.tipoEvento === "drive.carpeta_paciente") {
+    const p = PayloadCarpetaPacienteSchema.parse(evento.payload);
+    await asegurarCarpetaPaciente(db, drive, rootId, p.paciente_id, p.nombre);
+    return;
+  }
+
+  if (evento.tipoEvento === "drive.crear_carpeta") {
+    const p = PayloadCarpetaSchema.parse(evento.payload);
+    await drive.asegurarCarpeta(p.carpeta, rootId);
+    return;
+  }
+
+  if (evento.tipoEvento === "drive.archivar_comprobante") {
+    if (!clientes.telegramBotToken) {
+      throw new Error("TELEGRAM_BOT_TOKEN no está configurado: no se puede bajar el comprobante de Telegram.");
+    }
+    const p = PayloadComprobanteSchema.parse(evento.payload);
+    const carpetaPacienteId = await asegurarCarpetaPaciente(db, drive, rootId, p.paciente_id, p.paciente_nombre);
+
+    let carpetaComprobantesId = await recursos.buscarCarpetaComprobantes(db, p.paciente_id);
+    if (!carpetaComprobantesId) {
+      const sub = await drive.asegurarCarpeta(CARPETA_COMPROBANTES, carpetaPacienteId);
+      await recursos.guardarCarpetaComprobantes(db, p.paciente_id, {
+        carpetaId: sub.id,
+        padreId: carpetaPacienteId,
+      });
+      carpetaComprobantesId = sub.id;
+    }
+
+    const archivo = await descargarArchivoTelegram(clientes.telegramBotToken, p.file_id);
+    const ext = archivo.nombreSugerido.includes(".") ? `.${archivo.nombreSugerido.split(".").pop() ?? ""}` : "";
+    await drive.subirArchivo({
+      nombre: p.nombre_archivo.endsWith(ext) ? p.nombre_archivo : `${p.nombre_archivo}${ext}`,
+      parentId: carpetaComprobantesId,
+      mimeType: archivo.mimeType,
+      contenido: archivo.contenido,
+    });
+    return;
+  }
+
+  throw new Error(`procesarDrive no maneja tipo_evento="${evento.tipoEvento}".`);
+}
+
 async function procesarUnEvento(
   db: Db,
   clientes: ClientesGoogle,
@@ -149,6 +251,8 @@ async function procesarUnEvento(
     await procesarCalendar(db, clientes.calendar, evento, zonaHoraria);
   } else if (evento.destino === "sheets") {
     await procesarSheets(db, clientes, evento);
+  } else if (evento.destino === "drive") {
+    await procesarDrive(db, clientes, evento);
   } else {
     throw new Error(
       `Este consumidor no maneja destino="${evento.destino ?? "null"}" (tipo_evento="${evento.tipoEvento}").`,

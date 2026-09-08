@@ -30,6 +30,16 @@ const EnvSchema = z.object({
   // sus intentos: no es obligatorio para que el resto del adaptador funcione.
   GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
 
+  // Carpeta raíz en Drive bajo la que el sistema arma "Pacientes/<...>/"
+  // (organización automática). Sin esto, los eventos destino='drive' se
+  // reintentan hasta agotar sus intentos, igual que Sheets.
+  GOOGLE_DRIVE_ROOT_FOLDER_ID: z.string().optional(),
+
+  // Token del bot de Telegram (el mismo que usa apps/telegram-bot para el
+  // entorno activo). Solo se usa para BAJAR la foto de un comprobante por
+  // su file_id y subirla a Drive. Sin esto, esos eventos quedan 'fallido'.
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(500).max(60_000).default(5000),
   OUTBOX_LOTE: z.coerce.number().int().min(1).max(100).default(20),
 
