@@ -1,0 +1,79 @@
+{
+  "id": "fisioAvisosRef01",
+  "name": "avisos-referidos-telegram",
+  "active": true,
+  "settings": { "executionOrder": "v1", "timezone": "America/Bogota" },
+  "nodes": [
+    {
+      "id": "cron",
+      "name": "Cada 2 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300],
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 2 }] } }
+    },
+    {
+      "id": "pendientes",
+      "name": "core-api pendientes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:8000/avisos-telegram/pendientes",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "X-Internal-Key", "value": "dev-fisio-li-clave-local-2026" }] },
+        "options": { "response": { "response": { "neverError": true, "responseFormat": "json" } } }
+      }
+    },
+    {
+      "id": "porAviso",
+      "name": "PorAviso",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [660, 300],
+      "parameters": { "fieldToSplitOut": "datos.avisos", "options": {} }
+    },
+    {
+      "id": "enviar",
+      "name": "Enviar a Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [880, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "credentials": { "telegramApi": { "id": "xqHTHtpRqUjUSwQT", "name": "Telegram account" } }
+    },
+    {
+      "id": "marcar",
+      "name": "core-api marcar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/avisos-telegram/marcar",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "X-Internal-Key", "value": "dev-fisio-li-clave-local-2026" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"id\": $('PorAviso').item.json.id, \"ok\": true } }}",
+        "options": { "response": { "response": { "neverError": true, "responseFormat": "json" } } }
+      }
+    }
+  ],
+  "connections": {
+    "Cada 2 minutos": { "main": [[{ "node": "core-api pendientes", "type": "main", "index": 0 }]] },
+    "core-api pendientes": { "main": [[{ "node": "PorAviso", "type": "main", "index": 0 }]] },
+    "PorAviso": { "main": [[{ "node": "Enviar a Telegram", "type": "main", "index": 0 }]] },
+    "Enviar a Telegram": { "main": [[{ "node": "core-api marcar", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": null,
+  "tags": []
+}
