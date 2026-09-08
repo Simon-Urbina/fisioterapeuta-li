@@ -1726,6 +1726,93 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------
+-- Reprogramar (mover a otro horario) SIN cancelar ni recrear: la misma
+-- reserva cambia sus franjas. Así no quedan filas fantasma
+-- 'cancelada_a_tiempo' por cada reprogramación, se conserva el id (y con
+-- él la compra, el pago y la historia), y el trigger
+-- integracion.tg_emitir_evento_reserva emite 'reserva.reagendada' -> el
+-- evento de Google Calendar se MUEVE, no se duplica.
+-- La duración y los buffers se conservan (se calculan desde las franjas
+-- actuales y se desplazan). La restricción de exclusión sobre
+-- franja_bloqueo hace el chequeo anti-solapamiento en el UPDATE.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION agenda.reprogramar_reserva(
+    p_reserva_id   bigint,
+    p_nueva_inicia timestamptz,
+    p_por          text DEFAULT NULL
+) RETURNS agenda.estado_reserva
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = catalogo, personas, agenda, comercial, public
+AS $$
+DECLARE
+    v_r        agenda.reserva%ROWTYPE;
+    v_dur      interval;
+    v_buf_prev interval;
+    v_buf_post interval;
+BEGIN
+    SELECT * INTO v_r FROM agenda.reserva WHERE id = p_reserva_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'La reserva % no existe.', p_reserva_id USING ERRCODE = 'no_data_found';
+    END IF;
+
+    IF v_r.estado NOT IN ('pendiente_pago','confirmada','propuesta') THEN
+        RAISE EXCEPTION 'Una reserva en estado % no puede reprogramarse.', v_r.estado
+              USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF p_nueva_inicia <= now() THEN
+        RAISE EXCEPTION 'No es posible reprogramar hacia el pasado.'
+              USING ERRCODE = 'check_violation';
+    END IF;
+
+    v_dur      := upper(v_r.franja_clinica) - lower(v_r.franja_clinica);
+    v_buf_prev := lower(v_r.franja_clinica) - lower(v_r.franja_bloqueo);
+    v_buf_post := upper(v_r.franja_bloqueo) - upper(v_r.franja_clinica);
+
+    -- La cita movida debe seguir cabiendo en una franja de atención
+    -- vigente de esa sede y ese día (mismo criterio que agenda.crear_reserva).
+    IF NOT EXISTS (
+        SELECT 1
+          FROM agenda.horario_atencion h,
+               catalogo.sede sd
+         WHERE sd.id = v_r.sede_id
+           AND h.profesional_id = v_r.profesional_id
+           AND h.sede_id        = v_r.sede_id
+           AND h.dia_semana     = extract(dow FROM (p_nueva_inicia AT TIME ZONE sd.zona_horaria))::smallint
+           AND h.vigente_desde <= (p_nueva_inicia AT TIME ZONE sd.zona_horaria)::date
+           AND (h.vigente_hasta IS NULL
+                OR h.vigente_hasta >= (p_nueva_inicia AT TIME ZONE sd.zona_horaria)::date)
+           AND (p_nueva_inicia AT TIME ZONE sd.zona_horaria)::time >= h.hora_inicio
+           AND ((p_nueva_inicia + v_dur) AT TIME ZONE sd.zona_horaria)::time <= h.hora_fin
+    ) THEN
+        RAISE EXCEPTION 'El horario solicitado está fuera de la atención de esta sede.'
+              USING ERRCODE = 'check_violation';
+    END IF;
+
+    BEGIN
+        UPDATE agenda.reserva
+           SET franja_clinica = tstzrange(p_nueva_inicia, p_nueva_inicia + v_dur, '[)'),
+               franja_bloqueo = tstzrange(p_nueva_inicia - v_buf_prev,
+                                          p_nueva_inicia + v_dur + v_buf_post, '[)'),
+               -- Si aún está reteniendo el cupo, se recalcula el vencimiento
+               -- del hold contra el nuevo horario (igual que agenda.crear_reserva).
+               reserva_expira_en = CASE WHEN estado = 'pendiente_pago'
+                    THEN LEAST(now() + interval '24 hours', p_nueva_inicia - interval '24 hours')
+                    ELSE reserva_expira_en END,
+               actualizado_en = now(),
+               creado_por     = coalesce(p_por, creado_por)
+         WHERE id = p_reserva_id;
+    EXCEPTION WHEN exclusion_violation THEN
+        RAISE EXCEPTION 'El horario % ya fue tomado. Consulte nuevamente la disponibilidad.',
+              to_char(p_nueva_inicia AT TIME ZONE 'America/Bogota', 'DD/MM/YYYY HH24:MI')
+              USING ERRCODE = 'unique_violation';
+    END;
+
+    RETURN v_r.estado;
+END;
+$$;
+
+-- ---------------------------------------------------------------------
 -- Verificación del pago anticipado del 100%.
 -- ---------------------------------------------------------------------
 
@@ -2014,6 +2101,7 @@ GRANT EXECUTE ON FUNCTION
     agenda.crear_reserva(bigint, smallint, smallint, timestamptz, agenda.canal_origen, bigint, integer, smallint, text, smallint),
     agenda.inscribir_participante(bigint, bigint, bigint),
     agenda.cancelar_reserva(bigint, text, text),
+    agenda.reprogramar_reserva(bigint, timestamptz, text),
     agenda.expirar_reservas_vencidas(),
     comercial.verificar_pago(bigint, text),
     comercial.otorgar_descuento_referidos(bigint),

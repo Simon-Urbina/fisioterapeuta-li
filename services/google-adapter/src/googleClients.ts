@@ -37,6 +37,8 @@ export interface SheetsClient {
   agregarFila: (spreadsheetId: string, hoja: string, valores: (string | number)[]) => Promise<{ fila: number }>;
   /** Sobrescribe una fila ya existente (por número), para reflejar un cambio de estado sin duplicar la cita. */
   actualizarFila: (spreadsheetId: string, hoja: string, fila: number, valores: (string | number)[]) => Promise<void>;
+  /** Borra todas las filas de datos de la hoja (deja solo el encabezado). Para re-sincronizar desde cero. */
+  limpiarHoja: (spreadsheetId: string, hoja: string) => Promise<void>;
 }
 
 /** Una parte MIME con su cuerpo en base64 (líneas de 76, como pide RFC 2045). */
@@ -219,6 +221,16 @@ export function construirSheetsClient(auth: InstanceType<typeof google.auth.OAut
         range: `${hoja}!A${fila}:E${fila}`,
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [valores] },
+      });
+    },
+    async limpiarHoja(spreadsheetId, hoja) {
+      await asegurarHoja(spreadsheetId, hoja);
+      await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${hoja}!A:Z` });
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${hoja}!A1:E1`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [ENCABEZADO_RESERVAS] },
       });
     },
   };

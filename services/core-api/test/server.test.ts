@@ -109,6 +109,39 @@ describe("servidor core-api", () => {
     await app.close();
   });
 
+  it("POST /vinculo-telegram con cuerpo inválido (ultimos4 no numérico) → 422", async () => {
+    const app = await levantar();
+    const res = await app.inject({
+      method: "POST",
+      url: "/vinculo-telegram",
+      headers: { "x-internal-key": CLAVE },
+      payload: { chat_id: 999, documento: "1052400123", ultimos4: "abcd" },
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("POST /vinculo-telegram con datos correctos → 200 y vincula", async () => {
+    const { db } = crearDbFalsa([
+      [{ id: 5, nombre_completo: "Laura Gómez Díaz", telefono: "3001234567" }],
+      [],
+      [],
+    ]);
+    const app = await levantar(db);
+    const res = await app.inject({
+      method: "POST",
+      url: "/vinculo-telegram",
+      headers: { "x-internal-key": CLAVE },
+      payload: { chat_id: 999, documento: "1052400123", ultimos4: "4567" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      ok: true,
+      datos: { tipo: "vinculado", paciente: { id: 5, nombreEnmascarado: "Laura G." } },
+    });
+    await app.close();
+  });
+
   it("ruta inexistente → 404 sin filtrar detalles", async () => {
     const app = await levantar();
     const res = await app.inject({ method: "GET", url: "/no-existe", headers: { "x-internal-key": CLAVE } });

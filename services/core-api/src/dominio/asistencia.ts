@@ -1,6 +1,8 @@
 import type { Db } from "../db.js";
 import { ErrorDominio, normalizarErrorDb } from "../errores.js";
 import * as integraciones from "./integraciones.js";
+import * as referidos from "./referidos.js";
+import * as notificaciones from "./notificaciones.js";
 
 /**
  * Registro de asistencia a la cita por parte del personal del consultorio.
@@ -97,6 +99,30 @@ export async function registrarAsistencia(
         [opts.reservaId, nuevaAsistencia],
       );
       await integraciones.sincronizarEstadoReservaEnSheet(tx, opts.reservaId, nuevoEstado);
+
+      // ¿Este paciente fue referido y su referente acaba de llegar a los 5?
+      // Se otorga el descuento solo y se le avisa por Telegram si tiene chat.
+      if (opts.asistio) {
+        const ref = await tx.query<{ referente_id: number | string | null }>(
+          `SELECT pa.referido_por_paciente_id AS referente_id
+             FROM agenda.reserva_participante rp
+             JOIN personas.paciente pa ON pa.id = rp.paciente_id
+            WHERE rp.reserva_id = $1
+            LIMIT 1`,
+          [opts.reservaId],
+        );
+        const referenteId = ref.rows[0]?.referente_id;
+        if (referenteId !== null && referenteId !== undefined) {
+          const otorgado = await referidos.otorgarDescuentoReferidosSiElegible(tx, Number(referenteId));
+          if (otorgado) {
+            await notificaciones.encolarFelicitacionReferidos(tx, {
+              pacienteId: Number(referenteId),
+              porcentaje: otorgado.porcentaje,
+              referidos: otorgado.referidos,
+            });
+          }
+        }
+      }
       const r = await tx.query<{
         estado: string;
         servicio: string | null;

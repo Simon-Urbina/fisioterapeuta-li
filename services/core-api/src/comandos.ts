@@ -166,24 +166,29 @@ export async function ejecutarComando(
     switch (intencion) {
       case "consultar_catalogo": {
         const servicios = await catalogo.listarServicios(db);
-        // Dos señales para el bot (la lista SIEMPRE va completa: es información):
+        // Señales para el bot (la lista SIEMPRE va completa: es información):
         //  - `registrado`: el chat ya está vinculado a un paciente.
         //  - `valoracionRealizada`: además ya asistió a su valoración inicial.
         //    Hasta que eso pase, el bot solo ofrece la valoración inicial.
+        //  - `valoracionActiva`: ya tiene una valoración inicial agendada y sin
+        //    atender — no puede sacar otra (una sola a la vez).
         const chatId = Number(ctx.creadoPor);
         let registrado = true;
         let valoracionRealizada = true;
+        let valoracionActiva = false;
         if (ctx.esAdmin !== true && Number.isSafeInteger(chatId)) {
           const identidad = await pacientes.resolverPorChatId(db, chatId);
           if (identidad.tipo === "conocido") {
             registrado = true;
             valoracionRealizada = await pacientes.tieneValoracionAtendida(db, identidad.paciente.id);
+            valoracionActiva =
+              !valoracionRealizada && (await pacientes.tieneValoracionActiva(db, identidad.paciente.id));
           } else {
             registrado = false;
             valoracionRealizada = false;
           }
         }
-        return { ok: true, datos: { servicios, registrado, valoracionRealizada } };
+        return { ok: true, datos: { servicios, registrado, valoracionRealizada, valoracionActiva } };
       }
 
       case "consultar_agenda": {
@@ -211,9 +216,13 @@ export async function ejecutarComando(
           });
           return { ok: true, datos: { citas } };
         }
+        // `vinculado`: señal para el bot igual que `registrado` en
+        // consultar_catalogo. Si es false, el chat todavía no está atado a un
+        // paciente (p. ej. reservó por la web): el bot le ofrece identificarse
+        // con cédula + teléfono en vez de decir "no tiene citas".
         const identidad = await pacientes.resolverPorChatId(db, chatId);
         if (identidad.tipo === "desconocido") {
-          return { ok: true, datos: { citas: [] } };
+          return { ok: true, datos: { citas: [], vinculado: false } };
         }
         const citas = await agenda.consultarAgenda(db, {
           desdeIso,
@@ -221,7 +230,7 @@ export async function ejecutarComando(
           sedeNombre: entidades.sede ?? null,
           pacienteId: identidad.paciente.id,
         });
-        return { ok: true, datos: { citas } };
+        return { ok: true, datos: { citas, vinculado: true } };
       }
 
       case "consultar_disponibilidad": {
@@ -317,9 +326,11 @@ export async function ejecutarComando(
                 422,
               );
             }
-            const faltanRegistro = (["cliente", "telefono", "email", "documento", "eps"] as const).filter(
-              (campo) => entidades[campo] === undefined || entidades[campo] === null,
-            );
+            // `referido` es opcional pero se PREGUNTA (el paciente responde el
+            // código o "no"); por eso entra en la lista de campos requeridos.
+            const faltanRegistro = (
+              ["cliente", "telefono", "email", "documento", "eps", "referido"] as const
+            ).filter((campo) => entidades[campo] === undefined || entidades[campo] === null);
             if (faltanRegistro.length > 0) {
               return {
                 ok: false,
@@ -327,7 +338,7 @@ export async function ejecutarComando(
                 error: {
                   codigo: "registro_requerido",
                   mensaje:
-                    "Es su primera cita: necesito su nombre completo, su teléfono, su correo (le enviamos ahí la confirmación), su número de documento y su EPS.",
+                    "Es su primera cita: necesito su nombre completo, su teléfono, su correo (le enviamos ahí la confirmación), su número de documento, su EPS y, si alguien lo refirió, su código de referido.",
                   status: 422,
                 },
               };
@@ -338,6 +349,7 @@ export async function ejecutarComando(
               email: exigir(entidades.email, "email"),
               documento: exigir(entidades.documento, "documento"),
               eps: exigir(entidades.eps, "eps"),
+              referido: entidades.referido ?? null,
               chatId,
             });
           }
@@ -361,6 +373,22 @@ export async function ejecutarComando(
           paciente = resultadoPaciente.paciente;
         }
 
+        // Una sola valoración inicial "viva" por paciente: si ya tiene una
+        // agendada y sin atender, no puede sacar otra (evita que el mismo chat
+        // acumule valoraciones). Solo aplica al auto-agendamiento por chat; el
+        // staff puede tener un motivo para reagendar a mano.
+        if (
+          identificaPorChat &&
+          RE_VALORACION_INICIAL.test(servicio.nombre) &&
+          (await pacientes.tieneValoracionActiva(db, paciente.id))
+        ) {
+          return errorComando(
+            "valoracion_ya_agendada",
+            "Ya tiene una valoración inicial agendada. Cuando asista a esa consulta se habilitan los demás servicios; para verla, cambiarla o cancelarla escríbame «mis citas».",
+            409,
+          );
+        }
+
         const sede = await catalogo.resolverSede(db, nombreSede);
         if (!sede) return errorComando("no_encontrado", "No se encontró esa sede.", 404);
 
@@ -376,12 +404,18 @@ export async function ejecutarComando(
         // Acuse por correo (la confirmación real va cuando se verifica el
         // pago — ver dominio/pagos.ts). Solo si el paciente dejó email.
         if (paciente.email) {
+          const codigoRef = await pacientes.codigoReferidoDe(db, paciente.id);
           const { texto, html } = construirCorreo({
             titulo: "Recibimos su reserva",
             saludo: `Hola ${paciente.nombreCompleto},`,
             parrafos: [
               `Recibimos su reserva de ${servicio.nombre} en ${sede.nombre}.`,
               "Está pendiente del pago anticipado; le confirmamos la cita apenas lo verifiquemos.",
+              ...(codigoRef
+                ? [
+                    `Su código de referido es ${codigoRef}. Compártalo: cuando alguien venga a su cita y lo mencione, usted suma para un descuento.`,
+                  ]
+                : []),
             ],
             datos: [{ etiqueta: "Cuándo", valor: `${fecha} a las ${hora}` }],
           });
@@ -430,7 +464,6 @@ export async function ejecutarComando(
         const resultado = await agenda.modificarSesion(db, {
           reservaId: sesionId,
           nuevaIniciaEnIso: nuevaIso,
-          motivo: "Reprogramada por el paciente desde el bot",
           por: ctx.creadoPor ?? null,
         });
         return { ok: true, datos: resultado };

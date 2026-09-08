@@ -14,6 +14,15 @@ import { construirCorreo } from "./correo.js";
  */
 
 const PLANTILLA_24H = "recordatorio_24h";
+const PLANTILLA_CONFIRMACION_TG = "confirmacion_tg";
+const PLANTILLA_FELICITACION_REF = "felicitacion_referidos";
+
+/**
+ * Plantillas de aviso "simple" por Telegram: el cuerpo ya viene redactado por
+ * core-api y el bot solo lo reenvía tal cual (a diferencia de confirmacion_tg,
+ * que el bot arma con los datos de la cita).
+ */
+const PLANTILLAS_AVISO_SIMPLE = [PLANTILLA_FELICITACION_REF];
 
 export interface RecordatorioPendiente {
   reservaId: number;
@@ -142,6 +151,231 @@ export async function marcarRecordatorioResultado(
               error = $5
         WHERE reserva_id = $1 AND paciente_id = $2 AND plantilla = $3 AND estado = 'pendiente'`,
       [opts.reservaId, opts.pacienteId, PLANTILLA_24H, opts.ok, opts.error ?? null],
+    );
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Aviso de "cita confirmada" por Telegram cuando la confirmación se hace desde
+// el panel web (web/admin.ts `confirmarCita`), que no le habla al bot. La
+// verificación de pago POR Telegram (dominio/pagos.ts) ya le escribe directo
+// al paciente; para no duplicar, esa marca la fila como 'enviada' apenas
+// avisa. Mismo patrón idempotente que los recordatorios: el índice único
+// (reserva_id, paciente_id, plantilla) evita duplicados.
+// ---------------------------------------------------------------------------
+
+export interface ConfirmacionTelegramPendiente {
+  reservaId: number;
+  pacienteId: number;
+  paciente: string;
+  servicio: string | null;
+  sede: string | null;
+  iniciaEn: string;
+  chatId: string;
+}
+
+/**
+ * Encola el aviso "su cita quedó confirmada" por Telegram para una reserva
+ * recién confirmada, solo si la paciente tiene el chat vinculado (si no, ya
+ * recibe el correo de confirmación por otro lado). Idempotente: `ON CONFLICT
+ * DO NOTHING` sobre el índice único.
+ */
+export async function encolarConfirmacionTelegram(db: Db, reservaId: number): Promise<void> {
+  try {
+    await db.query(
+      `INSERT INTO integracion.notificacion
+         (paciente_id, reserva_id, plantilla, canal, destinatario, estado)
+       SELECT rp.paciente_id, r.id, $2, 'telegram'::agenda.canal_origen, vt.chat_id::text, 'pendiente'
+         FROM agenda.reserva r
+         JOIN agenda.reserva_participante rp ON rp.reserva_id = r.id
+         JOIN personas.vinculo_telegram vt ON vt.paciente_id = rp.paciente_id AND NOT vt.bloqueado
+        WHERE r.id = $1 AND r.estado = 'confirmada'
+       ON CONFLICT (reserva_id, paciente_id, plantilla) WHERE reserva_id IS NOT NULL AND paciente_id IS NOT NULL
+       DO NOTHING`,
+      [reservaId, PLANTILLA_CONFIRMACION_TG],
+    );
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+export type EstadoAvisoTgVerificacion = "sin_fila" | "reclamada" | "ya_enviada";
+
+/**
+ * Para la verificación de pago POR Telegram (que le escribe al paciente
+ * directo): decide si todavía hace falta ese aviso directo o si ya salió por
+ * el barrido (confirmación desde el panel web).
+ *  - "sin_fila": no hubo confirmación desde la web → el bot manda el aviso.
+ *  - "reclamada": había una fila pendiente/fallida; se marca 'enviada' aquí y
+ *    el bot manda el aviso ahora (el barrido ya no la tocará).
+ *  - "ya_enviada": el barrido ya avisó → el bot NO manda nada (evita el
+ *    mensaje de confirmación duplicado).
+ */
+export async function reclamarAvisoTelegramParaVerificacion(
+  db: Db,
+  reservaId: number,
+): Promise<EstadoAvisoTgVerificacion> {
+  try {
+    const r = await db.query<{ resultado: EstadoAvisoTgVerificacion }>(
+      `WITH fila AS (
+         SELECT id, estado FROM integracion.notificacion
+          WHERE reserva_id = $1 AND plantilla = $2
+          ORDER BY id LIMIT 1
+       ),
+       upd AS (
+         UPDATE integracion.notificacion n
+            SET estado = 'enviada', enviada_en = now()
+           FROM fila
+          WHERE n.id = fila.id AND fila.estado <> 'enviada'
+        RETURNING n.id
+       )
+       SELECT CASE
+         WHEN NOT EXISTS (SELECT 1 FROM fila) THEN 'sin_fila'
+         WHEN EXISTS (SELECT 1 FROM upd)      THEN 'reclamada'
+         ELSE 'ya_enviada'
+       END AS resultado`,
+      [reservaId, PLANTILLA_CONFIRMACION_TG],
+    );
+    return r.rows[0]?.resultado ?? "sin_fila";
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+/** Avisos de confirmación por Telegram todavía sin mandar (el bot los barre). */
+export async function listarConfirmacionesTelegramPendientes(
+  db: Db,
+): Promise<ConfirmacionTelegramPendiente[]> {
+  try {
+    const r = await db.query<{
+      reserva_id: number | string;
+      paciente_id: number | string;
+      paciente: string;
+      servicio: string | null;
+      sede: string | null;
+      inicia_en: string;
+      chat_id: string;
+    }>(
+      `SELECT n.reserva_id, n.paciente_id,
+              (pa.nombres || ' ' || pa.apellidos) AS paciente,
+              s.nombre AS servicio, se.nombre AS sede,
+              lower(r.franja_clinica) AS inicia_en,
+              n.destinatario AS chat_id
+         FROM integracion.notificacion n
+         JOIN agenda.reserva r ON r.id = n.reserva_id
+         JOIN personas.paciente pa ON pa.id = n.paciente_id
+         LEFT JOIN catalogo.servicio s ON s.id = r.servicio_id
+         LEFT JOIN catalogo.sede se ON se.id = r.sede_id
+        WHERE n.plantilla = $1 AND n.estado = 'pendiente'
+        ORDER BY n.programada_para
+        LIMIT 20`,
+      [PLANTILLA_CONFIRMACION_TG],
+    );
+    return r.rows.map((f) => ({
+      reservaId: Number(f.reserva_id),
+      pacienteId: Number(f.paciente_id),
+      paciente: f.paciente,
+      servicio: f.servicio,
+      sede: f.sede,
+      iniciaEn: f.inicia_en,
+      chatId: f.chat_id,
+    }));
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+/** Resultado de un aviso de confirmación TG que el bot mandó (o intentó). */
+export async function marcarConfirmacionTelegram(
+  db: Db,
+  opts: { reservaId: number; pacienteId: number; ok: boolean; error?: string | null },
+): Promise<void> {
+  try {
+    await db.query(
+      `UPDATE integracion.notificacion
+          SET estado = CASE WHEN $4 THEN 'enviada' ELSE 'fallida' END::integracion.estado_notificacion,
+              enviada_en = CASE WHEN $4 THEN now() ELSE NULL END,
+              error = $5
+        WHERE reserva_id = $1 AND paciente_id = $2 AND plantilla = $3 AND estado = 'pendiente'`,
+      [opts.reservaId, opts.pacienteId, PLANTILLA_CONFIRMACION_TG, opts.ok, opts.error ?? null],
+    );
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Avisos "simples" por Telegram (cuerpo ya redactado). Hoy: la felicitación
+// al referente que llegó a los 5 referidos y ganó su descuento.
+// ---------------------------------------------------------------------------
+
+export interface AvisoTelegramSimple {
+  id: number;
+  chatId: string;
+  texto: string;
+}
+
+/** Encola la felicitación por Telegram para `pacienteId` (si tiene chat vinculado). */
+export async function encolarFelicitacionReferidos(
+  db: Db,
+  opts: { pacienteId: number; porcentaje: number; referidos: number },
+): Promise<void> {
+  try {
+    const pct = Number.isInteger(opts.porcentaje) ? String(opts.porcentaje) : opts.porcentaje.toFixed(1);
+    const texto = [
+      "🎉 ¡Felicitaciones!",
+      "",
+      `Ya son ${opts.referidos} personas que usted refirió y asistieron a su cita. Por eso le regalamos un ${pct}% de descuento en su próxima cita.`,
+      "",
+      "El descuento se aplica solo cuando reserve su siguiente cita. ¡Gracias por recomendarnos! 💛",
+    ].join("\n");
+    await db.query(
+      `INSERT INTO integracion.notificacion
+         (paciente_id, plantilla, canal, destinatario, cuerpo, estado)
+       SELECT $1, $2, 'telegram'::agenda.canal_origen, vt.chat_id::text, $3, 'pendiente'
+         FROM personas.vinculo_telegram vt
+        WHERE vt.paciente_id = $1 AND NOT vt.bloqueado`,
+      [opts.pacienteId, PLANTILLA_FELICITACION_REF, texto],
+    );
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+/** Avisos simples de Telegram sin mandar (el bot los barre y reenvía el cuerpo). */
+export async function listarAvisosTelegramSimplesPendientes(db: Db): Promise<AvisoTelegramSimple[]> {
+  try {
+    const r = await db.query<{ id: number | string; chat_id: string; cuerpo: string | null }>(
+      `SELECT id, destinatario AS chat_id, cuerpo
+         FROM integracion.notificacion
+        WHERE canal = 'telegram' AND plantilla = ANY($1) AND estado = 'pendiente'
+        ORDER BY programada_para
+        LIMIT 20`,
+      [PLANTILLAS_AVISO_SIMPLE],
+    );
+    return r.rows
+      .filter((f): f is { id: number | string; chat_id: string; cuerpo: string } => typeof f.cuerpo === "string")
+      .map((f) => ({ id: Number(f.id), chatId: f.chat_id, texto: f.cuerpo }));
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+/** Resultado de un aviso simple que el bot mandó (o intentó), por id de notificación. */
+export async function marcarAvisoTelegram(
+  db: Db,
+  opts: { id: number; ok: boolean; error?: string | null },
+): Promise<void> {
+  try {
+    await db.query(
+      `UPDATE integracion.notificacion
+          SET estado = CASE WHEN $2 THEN 'enviada' ELSE 'fallida' END::integracion.estado_notificacion,
+              enviada_en = CASE WHEN $2 THEN now() ELSE NULL END,
+              error = $3
+        WHERE id = $1 AND estado = 'pendiente'`,
+      [opts.id, opts.ok, opts.error ?? null],
     );
   } catch (err) {
     throw normalizarErrorDb(err);

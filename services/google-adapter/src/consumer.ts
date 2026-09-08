@@ -112,6 +112,16 @@ async function procesarSheets(db: Db, clientes: ClientesGoogle, evento: EventoOu
   if (!clientes.sheets || !clientes.sheetsSpreadsheetId) {
     throw new Error("GOOGLE_SHEETS_SPREADSHEET_ID no está configurado: no se puede respaldar en Sheets.");
   }
+
+  // Re-sincronización total: se borra la hoja y los mapeos fila↔reserva, y a
+  // continuación llegan los eventos `reserva.estado_cambiado` de cada cita
+  // (una fila por reserva). Sirve para arreglar la hoja si quedó desalineada.
+  if (evento.tipoEvento === "sheets.limpiar") {
+    await clientes.sheets.limpiarHoja(clientes.sheetsSpreadsheetId, HOJA_RESERVAS);
+    await recursos.borrarMapeosSheet(db);
+    return;
+  }
+
   const payload = PayloadSheetsSchema.parse(evento.payload);
   const valores: (string | number)[] = [payload.fecha, payload.paciente, payload.servicio, payload.sede, payload.estado];
 

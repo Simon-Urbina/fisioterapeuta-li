@@ -13,6 +13,7 @@ import * as asistencia from "./dominio/asistencia.js";
 import * as notificaciones from "./dominio/notificaciones.js";
 import * as admin from "./web/admin.js";
 import * as historiaResumen from "./dominio/historiaResumen.js";
+import * as pacientes from "./dominio/pacientes.js";
 import { registrarRutasWeb } from "./web/rutas.js";
 
 /** Comparación de tiempo constante entre el header y el secreto esperado. */
@@ -200,6 +201,27 @@ export function construirServidor(cfg: Config = loadConfig(), db: Db = construir
     return conDominio(reply, () => historiaResumen.resumenHistoria(db, q.data.documento));
   });
 
+  // --- Identificación de un chat de Telegram que no llegó por el bot ---
+  // (paciente que reservó por la web). Fuera de /comandos: no es una intención
+  // del modelo, es una verificación de identidad. Guard: X-Internal-Key.
+  const VinculoTelegramBody = z.object({
+    chat_id: z.coerce.number().int(),
+    documento: z.string().trim().min(3).max(20),
+    ultimos4: z.string().trim().regex(/^\d{4}$/),
+  });
+
+  app.post("/vinculo-telegram", async (req, reply) => {
+    const b = VinculoTelegramBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, () =>
+      pacientes.vincularChatPorDocumento(db, {
+        chatId: b.data.chat_id,
+        documento: b.data.documento,
+        ultimos4: b.data.ultimos4,
+      }),
+    );
+  });
+
   // --- Recordatorios de cita (ver dominio/notificaciones.ts) ---
   // El bot barre periódicamente; el guard sigue siendo X-Internal-Key.
   const RecordatorioResultadoBody = z.object({
@@ -237,6 +259,58 @@ export function construirServidor(cfg: Config = loadConfig(), db: Db = construir
     return conDominio(reply, () =>
       notificaciones.enviarRecordatorioPorEmail(db, { reservaId: b.data.reserva_id, pacienteId: b.data.paciente_id }),
     );
+  });
+
+  // --- Aviso "cita confirmada" por Telegram cuando se confirmó desde el panel
+  // web (que no le habla al bot). El bot barre las pendientes y las manda.
+  app.get("/confirmaciones-telegram/pendientes", async (_req, reply) =>
+    conDominio(reply, async () => ({
+      confirmaciones: await notificaciones.listarConfirmacionesTelegramPendientes(db),
+    })),
+  );
+
+  const ConfirmacionTgMarcarBody = z.object({
+    reserva_id: z.coerce.number().int().positive(),
+    paciente_id: z.coerce.number().int().positive(),
+    ok: z.boolean(),
+    error: z.string().max(300).nullish(),
+  });
+
+  app.post("/confirmaciones-telegram/marcar", async (req, reply) => {
+    const b = ConfirmacionTgMarcarBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, async () => {
+      await notificaciones.marcarConfirmacionTelegram(db, {
+        reservaId: b.data.reserva_id,
+        pacienteId: b.data.paciente_id,
+        ok: b.data.ok,
+        error: b.data.error ?? null,
+      });
+      return { ok: true };
+    });
+  });
+
+  // --- Avisos "simples" por Telegram (cuerpo ya redactado): hoy la
+  // felicitación por el descuento de referidos. El bot los barre y reenvía.
+  app.get("/avisos-telegram/pendientes", async (_req, reply) =>
+    conDominio(reply, async () => ({
+      avisos: await notificaciones.listarAvisosTelegramSimplesPendientes(db),
+    })),
+  );
+
+  const AvisoTgMarcarBody = z.object({
+    id: z.coerce.number().int().positive(),
+    ok: z.boolean(),
+    error: z.string().max(300).nullish(),
+  });
+
+  app.post("/avisos-telegram/marcar", async (req, reply) => {
+    const b = AvisoTgMarcarBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, async () => {
+      await notificaciones.marcarAvisoTelegram(db, { id: b.data.id, ok: b.data.ok, error: b.data.error ?? null });
+      return { ok: true };
+    });
   });
 
   // API de navegador (apps/web). Rutas /api/* con su propia auth.

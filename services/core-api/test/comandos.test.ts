@@ -47,7 +47,7 @@ describe("ejecutarComando", () => {
   it("consultar_agenda de un chat no-admin desconocido devuelve vacío sin filtrar por sede/fecha", async () => {
     const { db, llamadas } = crearDbFalsa([[]]);
     const r = await ejecutarComando(db, "consultar_agenda", {}, { creadoPor: "555" });
-    expect(r).toEqual({ ok: true, datos: { citas: [] } });
+    expect(r).toEqual({ ok: true, datos: { citas: [], vinculado: false } });
     expect(llamadas).toHaveLength(1); // solo resolverPorChatId, nunca llega a agenda.v_cita
   });
 
@@ -163,10 +163,18 @@ describe("ejecutarComando", () => {
   });
 
   // Orden en crear_sesion: resolverServicio -> resolverTarifaIndividual -> (identidad)
-  //   -> [registro] -> resolverSede -> agenda.crearSesion(tx: crear_reserva, INSERT compra,
-  //   UPDATE participante, UPDATE reserva).
+  //   -> [registro] -> resolverSede -> agenda.crearSesion(tx: crear_reserva,
+  //   descuentoDisponible, INSERT compra, UPDATE participante, UPDATE reserva,
+  //   sincronizarEstadoReservaEnSheet = SELECT + INSERT outbox).
   const TARIFA = [{ id: 29, nombre: "Sesión individual", valor_total: "120000.00", moneda: "COP" }];
-  const COLA_CREAR = [[{ id: 500 }], [], []]; // compra, participante, reserva_expira
+  const COLA_CREAR = [
+    [], // descuentoDisponible (ninguno)
+    [{ id: 500 }], // INSERT compra
+    [], // UPDATE participante
+    [], // UPDATE reserva_expira
+    [{ paciente: "Ana Ríos", servicio: "Punción", sede: "Tunja", inicia_en: "2027-01-15T20:00:00.000Z" }], // SELECT para el sheet
+    [], // INSERT outbox (sheet)
+  ];
   const FECHA_HABIL = { fecha: "2027-01-15", hora: "15:00" }; // viernes, lejos en el futuro
   const FECHA_FINDE = { fecha: "2027-01-16", hora: "10:00" }; // sábado
 
@@ -247,6 +255,27 @@ describe("ejecutarComando", () => {
     expect((r as { error: { codigo: string } }).error.codigo).toBe("valoracion_requerida");
   });
 
+  it("crear_sesion: un chat que ya tiene una valoración inicial en pie no puede sacar otra", async () => {
+    const { db } = crearDbFalsa([
+      [{ id: 7, nombre: "Valoración inicial", duracion_min_minutos: 60, duracion_max_minutos: 60 }],
+      TARIFA,
+      [{ id: 5, nombre_completo: "Laura Gómez", telefono: "3001234567", email: null }], // resolverPorChatId: conocido
+      // (booking una valoración: el chequeo de "valoración atendida" se salta por corto-circuito)
+      [{ existe: true }], // tieneValoracionActiva: ya tiene una agendada
+    ]);
+    const r = await ejecutarComando(
+      db,
+      "crear_sesion",
+      { servicio: "Valoración inicial", sede: "Tunja", ...FECHA_HABIL },
+      { creadoPor: "111" },
+    );
+    expect(r.ok).toBe(false);
+    expect((r as { error: { codigo: string; status: number } }).error).toMatchObject({
+      codigo: "valoracion_ya_agendada",
+      status: 409,
+    });
+  });
+
   it("crear_sesion rechaza citas con menos de 24 h de anticipación", async () => {
     const { db, llamadas } = crearDbFalsa([
       [{ id: 3, nombre: "Punción Seca", duracion_min_minutos: 30, duracion_max_minutos: 45 }],
@@ -303,6 +332,7 @@ describe("ejecutarComando", () => {
       "email",
       "documento",
       "eps",
+      "referido",
     ]);
   });
 
@@ -314,9 +344,11 @@ describe("ejecutarComando", () => {
       [], // crearPacienteConVinculo: SELECT por numero_documento -> no existe
       [{ id: 9 }], // insert personas.paciente
       [], // insert personas.vinculo_telegram
+      [{ existe: false }], // tieneValoracionActiva: no tiene otra valoración en pie
       [{ id: 1, nombre: "Tunja" }],
       [{ crear_reserva: 78 }],
       ...COLA_CREAR,
+      [{ codigo_referido: "ANAR0009" }], // codigoReferidoDe (para el correo)
       [{ id: 900 }], // enviarCorreo: INSERT integracion.outbox (acuse por correo)
     ]);
     const r = await ejecutarComando(
@@ -328,6 +360,7 @@ describe("ejecutarComando", () => {
         email: "ana@correo.com",
         documento: "1122334455",
         eps: "Sura",
+        referido: "no",
         servicio: "Valoración inicial",
         sede: "Tunja",
         ...FECHA_HABIL,

@@ -64,6 +64,37 @@ describe("dominio/agenda", () => {
     expect(llamadas[0]?.texto).toContain("agenda.crear_reserva");
   });
 
+  it("crearSesion aplica el descuento de referidos si el paciente tiene uno disponible", async () => {
+    const { db, llamadas } = crearDbFalsa([
+      [{ crear_reserva: 88 }], // crear_reserva
+      [{ id: 3, porcentaje_descuento: "10.00" }], // descuentoDisponible -> hay uno
+      [{ id: 500 }], // INSERT compra
+      [], // UPDATE participante
+      [], // UPDATE reserva_expira
+      [], // redimirDescuento
+      [{ paciente: "Laura Gómez", servicio: "Valoración inicial", sede: "Sede Tunja", inicia_en: "2026-09-25T20:00:00.000Z" }], // SELECT para el sheet
+      [], // INSERT outbox (sheet)
+    ]);
+    const r = await agenda.crearSesion(db, {
+      pacienteId: 5,
+      servicioId: 2,
+      sedeId: 1,
+      iniciaEnIso: "2026-09-25T15:00:00-05:00",
+      tarifa: { id: 15, nombre: "Valoración inicial", valorTotal: 100000, moneda: "COP" },
+    });
+    expect(r).toEqual({
+      reservaId: 88,
+      compraId: 500,
+      montoTotal: 90000, // 100.000 − 10%
+      moneda: "COP",
+      descuento: { porcentaje: 10, montoOriginal: 100000, montoDescontado: 10000 },
+    });
+    // el INSERT de la compra usa el monto ya descontado
+    expect(llamadas[2]?.valores).toContain(90000);
+    // se redime el beneficio contra esta compra/reserva
+    expect(llamadas[5]?.valores).toEqual([3, 500, 88]);
+  });
+
   it("crearSesion propaga el conflicto de doble reserva como 409", async () => {
     const { db } = crearDbFalsaConError([], 0, {
       code: "23505",
@@ -86,46 +117,32 @@ describe("dominio/agenda", () => {
     expect(resultado).toEqual({ estado: "cancelada_a_tiempo" });
   });
 
-  it("modificarSesion sin compra: cancela y crea una nueva en una transacción", async () => {
+  it("modificarSesion sin compra: mueve la misma reserva en su lugar", async () => {
     const { db, llamadas } = crearDbFalsa([
-      [{ paciente_id: 5, servicio_id: 3, sede_id: 1, estado: "pendiente_pago", compra_id: null }],
-      [{ estado: "cancelada_a_tiempo" }], // cancelar_reserva
-      [], // SELECT de sincronizarEstadoReservaEnSheet (sin fila -> no encola nada)
-      [{ crear_reserva: 88 }], // crear_reserva
+      [{ estado: "pendiente_pago" }], // SELECT agenda.reprogramar_reserva(...)
+      [{ compra_id: null, valor_total: null }], // SELECT compra_id, valor_total
+      [], // sincronizarEstadoReservaEnSheet
     ]);
-    const r = await agenda.modificarSesion(db, {
-      reservaId: 9,
-      nuevaIniciaEnIso: "2026-09-06T10:00:00-05:00",
-      motivo: "x",
-    });
-    expect(r).toEqual({ reservaId: 88, estado: "pendiente_pago", compraId: null, montoTotal: null });
-    expect(llamadas).toHaveLength(4);
+    const r = await agenda.modificarSesion(db, { reservaId: 9, nuevaIniciaEnIso: "2026-09-06T10:00:00-05:00" });
+    expect(r).toEqual({ reservaId: 9, estado: "pendiente_pago", compraId: null, montoTotal: null });
+    expect(llamadas[0]?.texto).toContain("agenda.reprogramar_reserva");
+    expect(llamadas).toHaveLength(3);
   });
 
-  it("modificarSesion de una cita PAGADA: mueve la compra y la nueva nace confirmada", async () => {
+  it("modificarSesion de una cita PAGADA: conserva el id y devuelve estado/compra/monto", async () => {
     const { db } = crearDbFalsa([
-      [{ paciente_id: 5, servicio_id: 3, sede_id: 1, estado: "confirmada", compra_id: 20 }],
-      [{ estado: "cancelada_a_tiempo" }], // cancelar_reserva
-      [], // SELECT de sincronizarEstadoReservaEnSheet para la reserva vieja (cancelada)
-      [{ crear_reserva: 88 }], // crear_reserva
-      [], // UPDATE participante viejo -> compra_id NULL
-      [], // UPDATE participante nuevo -> compra_id 20
-      [], // UPDATE reserva nueva -> confirmada
-      [], // SELECT de sincronizarEstadoReservaEnSheet para la reserva nueva (confirmada)
-      [{ valor_total: "150000.00" }], // SELECT valor_total
+      [{ estado: "confirmada" }], // reprogramar_reserva
+      [{ compra_id: 20, valor_total: "150000.00" }], // compra_id, valor_total
+      [], // sincronizarEstadoReservaEnSheet
     ]);
-    const r = await agenda.modificarSesion(db, {
-      reservaId: 9,
-      nuevaIniciaEnIso: "2026-09-06T10:00:00-05:00",
-      motivo: "x",
-    });
-    expect(r).toEqual({ reservaId: 88, estado: "confirmada", compraId: 20, montoTotal: 150000 });
+    const r = await agenda.modificarSesion(db, { reservaId: 9, nuevaIniciaEnIso: "2026-09-06T10:00:00-05:00" });
+    expect(r).toEqual({ reservaId: 9, estado: "confirmada", compraId: 20, montoTotal: 150000 });
   });
 
-  it("modificarSesion lanza no_encontrado si la reserva no existe", async () => {
-    const { db } = crearDbFalsa([[]]);
+  it("modificarSesion propaga no_encontrado si la función lanza no_data_found", async () => {
+    const { db } = crearDbFalsaConError([], 0, { code: "P0002", message: "La reserva 999 no existe." });
     await expect(
-      agenda.modificarSesion(db, { reservaId: 999, nuevaIniciaEnIso: "2026-09-06T10:00:00-05:00", motivo: "x" }),
+      agenda.modificarSesion(db, { reservaId: 999, nuevaIniciaEnIso: "2026-09-06T10:00:00-05:00" }),
     ).rejects.toMatchObject({ codigo: "no_encontrado", status: 404 });
   });
 

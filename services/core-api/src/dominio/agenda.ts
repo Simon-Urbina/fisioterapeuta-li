@@ -2,6 +2,7 @@ import type { Db } from "../db.js";
 import { ErrorDominio, normalizarErrorDb } from "../errores.js";
 import { profesionalPorDefecto } from "./catalogo.js";
 import * as integraciones from "./integraciones.js";
+import * as referidos from "./referidos.js";
 
 /**
  * Capa fina sobre las funciones de negocio de `agenda.*` en
@@ -134,6 +135,8 @@ export interface ResultadoCrearSesion {
   compraId?: number;
   montoTotal?: number;
   moneda?: string;
+  /** Presente si se aplicó un descuento del programa de referidos a esta compra. */
+  descuento?: { porcentaje: number; montoOriginal: number; montoDescontado: number };
 }
 
 export async function crearSesion(
@@ -148,8 +151,7 @@ export async function crearSesion(
      * Si se pasa, la cita nace ligada a una `comercial.compra` de 1 sesión
      * con este precio, en estado `pendiente_pago`, y `reserva_expira_en` se
      * fija en LEAST(now()+24h, inicia−24h). El pago se reporta y verifica
-     * aparte (ver dominio/pagos.ts). Sin tarifa: comportamiento antiguo,
-     * sin compra (lo usa `modificarSesion`).
+     * aparte (ver dominio/pagos.ts). Sin tarifa: reserva sin compra asociada.
      */
     tarifa?: { id: number; nombre: string; valorTotal: number; moneda: string };
   },
@@ -167,6 +169,10 @@ export async function crearSesion(
       const tarifa = opts.tarifa;
       if (!tarifa) return { reservaId };
 
+      // Descuento del programa de referidos, si el paciente tiene uno disponible.
+      const desc = await referidos.descuentoDisponible(tx, opts.pacienteId);
+      const montoFinal = desc ? referidos.aplicarPorcentaje(tarifa.valorTotal, desc.porcentaje) : tarifa.valorTotal;
+
       const c = await tx.query<{ id: number }>(
         `INSERT INTO comercial.compra
            (paciente_id, tarifa_id, servicio_id, servicio_nombre, tarifa_nombre,
@@ -174,7 +180,7 @@ export async function crearSesion(
          SELECT $1, $2, $3, s.nombre, $4, 1, 1, $5, $6, 'pendiente_pago', 'telegram'
            FROM catalogo.servicio s WHERE s.id = $3
          RETURNING id`,
-        [opts.pacienteId, tarifa.id, opts.servicioId, tarifa.nombre, tarifa.valorTotal, tarifa.moneda],
+        [opts.pacienteId, tarifa.id, opts.servicioId, tarifa.nombre, montoFinal, tarifa.moneda],
       );
       const compraId = Number((c.rows[0] as { id: number | string }).id);
 
@@ -189,7 +195,31 @@ export async function crearSesion(
           WHERE id = $1 AND estado = 'pendiente_pago'`,
         [reservaId],
       );
-      return { reservaId, compraId, montoTotal: tarifa.valorTotal, moneda: tarifa.moneda };
+
+      if (desc) {
+        await referidos.redimirDescuento(tx, { beneficioId: desc.beneficioId, compraId, reservaId });
+      }
+
+      // La cita entra al respaldo de Sheets desde que se crea (UNA fila por
+      // reserva). Así los cambios posteriores (pago, reprogramar, cancelar)
+      // SOBREESCRIBEN esa fila en vez de agregar una nueva.
+      await integraciones.sincronizarEstadoReservaEnSheet(tx, reservaId, "pendiente_pago");
+
+      return {
+        reservaId,
+        compraId,
+        montoTotal: montoFinal,
+        moneda: tarifa.moneda,
+        ...(desc
+          ? {
+              descuento: {
+                porcentaje: desc.porcentaje,
+                montoOriginal: tarifa.valorTotal,
+                montoDescontado: tarifa.valorTotal - montoFinal,
+              },
+            }
+          : {}),
+      };
     });
   } catch (err) {
     throw normalizarErrorDb(err);
@@ -225,75 +255,44 @@ export async function cancelarSesion(
 }
 
 /**
- * Reprograma una cita. `schema.sql` todavía no tiene una función atómica
- * `agenda.modificar_reserva`: se compone cancelando la reserva original y
- * creando una nueva con la misma paciente/servicio/sede, dentro de una sola
- * transacción para no perder la cita si el nuevo horario ya no está libre.
- *
- * GAP CONOCIDO (para coordinar con Simón / db/): esto pierde el historial
- * de la reserva original como "la misma cita reprogramada" — queda como
- * "cancelada_a_tiempo" + una reserva nueva, en vez de un solo registro
- * actualizado. Suficiente para el MVP; una función SQL dedicada sería la
- * forma correcta de resolverlo.
+ * Reprograma una cita EN SU LUGAR con `agenda.reprogramar_reserva`: la misma
+ * reserva cambia de horario. Conserva el id (y con él la compra, el pago y la
+ * historia), no deja filas fantasma `cancelada_a_tiempo` por cada
+ * reprogramación, y el trigger emite `reserva.reagendada` → el evento de
+ * Google Calendar se MUEVE en vez de duplicarse. El chequeo anti-solapamiento
+ * lo hace la restricción de exclusión de la base.
  */
 export async function modificarSesion(
   db: Db,
-  opts: { reservaId: number; nuevaIniciaEnIso: string; motivo: string; por?: string | null },
+  opts: { reservaId: number; nuevaIniciaEnIso: string; por?: string | null },
 ): Promise<{ reservaId: number; estado: string; compraId: number | null; montoTotal: number | null }> {
-  const actual = await db.query<{
-    paciente_id: number;
-    servicio_id: number | null;
-    sede_id: number;
-    estado: string;
-    compra_id: number | string | null;
-  }>(
-    `SELECT rp.paciente_id, r.servicio_id, r.sede_id, r.estado, rp.compra_id
-       FROM agenda.reserva r
-       JOIN agenda.reserva_participante rp ON rp.reserva_id = r.id
-      WHERE r.id = $1
-      LIMIT 1`,
-    [opts.reservaId],
-  );
-  const fila = actual.rows[0];
-  if (fila === undefined) {
-    throw new ErrorDominio("La sesión no existe.", "no_encontrado", 404);
-  }
-  if (fila.servicio_id === null) {
-    throw new ErrorDominio("La sesión no tiene un servicio asociado.", "no_encontrado", 404);
-  }
-  // Variables locales (no accesos a propiedad) para que la reducción de
-  // null/undefined siga siendo válida dentro del closure de `db.tx`.
-  const { paciente_id: pacienteId, servicio_id: servicioId, sede_id: sedeId } = fila;
-  const estadoViejo = fila.estado;
-  const compraId = fila.compra_id === null ? null : Number(fila.compra_id);
+  try {
+    const r = await db.query<{ estado: string }>(
+      `SELECT agenda.reprogramar_reserva($1, $2::timestamptz, $3) AS estado`,
+      [opts.reservaId, opts.nuevaIniciaEnIso, opts.por ?? null],
+    );
+    const estado = (r.rows[0] as { estado: string }).estado;
 
-  return db.tx(async (tx) => {
-    await cancelarSesion(tx, { reservaId: opts.reservaId, motivo: opts.motivo, por: opts.por ?? null });
-    const { reservaId: nueva } = await crearSesion(tx, {
-      pacienteId,
-      servicioId,
-      sedeId,
-      iniciaEnIso: opts.nuevaIniciaEnIso,
-      creadoPor: opts.por ?? null,
-    });
+    // La compra y el monto siguen atados a la misma reserva: solo se leen
+    // para que el bot decida si vuelve a pedir el comprobante.
+    const info = await db.query<{ compra_id: number | string | null; valor_total: string | null }>(
+      `SELECT rp.compra_id, c.valor_total
+         FROM agenda.reserva_participante rp
+         LEFT JOIN comercial.compra c ON c.id = rp.compra_id
+        WHERE rp.reserva_id = $1
+        LIMIT 1`,
+      [opts.reservaId],
+    );
+    const compraRaw = info.rows[0]?.compra_id;
+    const valorRaw = info.rows[0]?.valor_total;
+    const compraId = compraRaw === null || compraRaw === undefined ? null : Number(compraRaw);
+    const montoTotal = valorRaw === null || valorRaw === undefined ? null : Number(valorRaw);
 
-    let estado = "pendiente_pago";
-    let montoTotal: number | null = null;
-    if (compraId !== null) {
-      // Se mueve la compra (y su pago) de la cita vieja a la nueva.
-      await tx.query(`UPDATE agenda.reserva_participante SET compra_id = NULL WHERE reserva_id = $1`, [opts.reservaId]);
-      await tx.query(`UPDATE agenda.reserva_participante SET compra_id = $1 WHERE reserva_id = $2`, [compraId, nueva]);
-      if (estadoViejo === "confirmada") {
-        // Ya estaba pagada: la nueva nace confirmada, sin nuevo hold.
-        await tx.query(`UPDATE agenda.reserva SET estado = 'confirmada', reserva_expira_en = NULL WHERE id = $1`, [nueva]);
-        estado = "confirmada";
-        await integraciones.sincronizarEstadoReservaEnSheet(tx, nueva, "confirmada");
-      }
-      const m = await tx.query<{ valor_total: string }>(`SELECT valor_total FROM comercial.compra WHERE id = $1`, [compraId]);
-      montoTotal = m.rows[0] ? Number(m.rows[0].valor_total) : null;
-    }
-    return { reservaId: nueva, estado, compraId, montoTotal };
-  });
+    await integraciones.sincronizarEstadoReservaEnSheet(db, opts.reservaId, estado);
+    return { reservaId: opts.reservaId, estado, compraId, montoTotal };
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
 }
 
 export async function bloquearHorario(

@@ -4,6 +4,7 @@ import { ErrorDominio, normalizarErrorDb } from "../errores.js";
 import * as agenda from "../dominio/agenda.js";
 import * as asistencia from "../dominio/asistencia.js";
 import * as integraciones from "../dominio/integraciones.js";
+import * as notificaciones from "../dominio/notificaciones.js";
 
 /**
  * Lógica del panel de Lina. La autenticación (token) se resuelve en las
@@ -81,6 +82,9 @@ export async function confirmarCita(db: Db, reservaId: number): Promise<{ reserv
       [reservaId],
     );
     await integraciones.sincronizarEstadoReservaEnSheet(tx, reservaId, "confirmada");
+    // El panel no le habla al bot: se encola el aviso "cita confirmada" por
+    // Telegram para que el barrido del bot se lo mande al paciente.
+    await notificaciones.encolarConfirmacionTelegram(tx, reservaId);
     return { reservaId, estado: "confirmada" };
   });
 }

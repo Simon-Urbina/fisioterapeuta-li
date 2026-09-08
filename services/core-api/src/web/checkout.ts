@@ -23,6 +23,7 @@ interface FilaReserva {
   paciente: string;
   inicia_en: string;
   codigo_referido: string | null;
+  descuento_pct: string | null;
 }
 
 async function buscarReserva(db: Db, uuid: string): Promise<FilaReserva> {
@@ -32,13 +33,16 @@ async function buscarReserva(db: Db, uuid: string): Promise<FilaReserva> {
             s.nombre AS servicio, se.nombre AS sede,
             (pa.nombres || ' ' || pa.apellidos) AS paciente,
             lower(r.franja_clinica) AS inicia_en,
-            pa.codigo_referido
+            pa.codigo_referido,
+            b.porcentaje_descuento AS descuento_pct
        FROM agenda.reserva r
        LEFT JOIN agenda.reserva_participante rp ON rp.reserva_id = r.id
        LEFT JOIN comercial.compra c ON c.id = rp.compra_id
        LEFT JOIN catalogo.servicio s ON s.id = r.servicio_id
        LEFT JOIN catalogo.sede se ON se.id = r.sede_id
        LEFT JOIN personas.paciente pa ON pa.id = rp.paciente_id
+       LEFT JOIN comercial.beneficio b
+              ON b.redimido_compra_id = rp.compra_id AND b.tipo = 'descuento_referidos'
       WHERE r.uuid = $1 AND r.tipo = 'cita'
       LIMIT 1`,
     [uuid],
@@ -59,10 +63,21 @@ export interface DatosCheckout {
   moneda: string | null;
   nequi: string;
   codigoReferido: string | null;
+  /** Descuento del programa de referidos aplicado a este pago, si lo hay. */
+  descuento: { porcentaje: number; montoOriginal: number; montoDescontado: number } | null;
 }
 
 export async function datosCheckout(db: Db, uuid: string): Promise<DatosCheckout> {
   const f = await buscarReserva(db, uuid);
+  const monto = f.valor_total === null ? null : Number(f.valor_total);
+  const pct = f.descuento_pct === null ? null : Number(f.descuento_pct);
+  const descuento =
+    pct !== null && pct > 0 && monto !== null
+      ? (() => {
+          const montoOriginal = Math.round(monto / (1 - pct / 100));
+          return { porcentaje: pct, montoOriginal, montoDescontado: montoOriginal - monto };
+        })()
+      : null;
   return {
     reservaId: Number(f.id),
     estado: f.estado,
@@ -70,10 +85,11 @@ export async function datosCheckout(db: Db, uuid: string): Promise<DatosCheckout
     sede: f.sede,
     paciente: f.paciente,
     iniciaEn: f.inicia_en,
-    monto: f.valor_total === null ? null : Number(f.valor_total),
+    monto,
     moneda: f.moneda,
     nequi: "3113981422",
     codigoReferido: f.codigo_referido,
+    descuento,
   };
 }
 

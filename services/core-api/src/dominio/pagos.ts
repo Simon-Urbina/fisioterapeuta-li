@@ -1,6 +1,7 @@
 import type { Db } from "../db.js";
 import { ErrorDominio, normalizarErrorDb } from "../errores.js";
 import * as integraciones from "./integraciones.js";
+import * as notificaciones from "./notificaciones.js";
 import { construirCorreo } from "./correo.js";
 
 /**
@@ -153,10 +154,12 @@ export async function verificarPago(
         inicia_en: string;
         chat_id: string | null;
         paciente_email: string | null;
+        paciente_codigo_referido: string | null;
         sede: string | null;
       }>(
         `SELECT r.id AS reserva_id, s.nombre AS servicio, lower(r.franja_clinica) AS inicia_en,
-                vt.chat_id::text AS chat_id, pa.email AS paciente_email, se.nombre AS sede
+                vt.chat_id::text AS chat_id, pa.email AS paciente_email,
+                pa.codigo_referido AS paciente_codigo_referido, se.nombre AS sede
            FROM comercial.pago p
            JOIN agenda.reserva_participante rp ON rp.compra_id = p.compra_id
            JOIN agenda.reserva r ON r.id = rp.reserva_id AND r.estado = 'confirmada'
@@ -170,8 +173,16 @@ export async function verificarPago(
 
       // Respaldo en Sheets de cada cita que acaba de confirmarse (ver
       // services/google-adapter, destino='sheets').
+      const avisoTg = new Map<number, notificaciones.EstadoAvisoTgVerificacion>();
       for (const f of r.rows) {
         await integraciones.sincronizarEstadoReservaEnSheet(tx, Number(f.reserva_id), "confirmada");
+        // Esta vía (verificación por Telegram) le escribe al paciente directo
+        // más abajo. Si el panel web YA disparó ese aviso por el barrido, se
+        // detecta acá para no mandarlo dos veces.
+        avisoTg.set(
+          Number(f.reserva_id),
+          await notificaciones.reclamarAvisoTelegramParaVerificacion(tx, Number(f.reserva_id)),
+        );
       }
 
       // Correo "su cita quedó confirmada" a quien dejó un email.
@@ -180,7 +191,14 @@ export async function verificarPago(
         const servicio = f.servicio ?? "su cita";
         const { texto, html } = construirCorreo({
           titulo: "Su cita quedó confirmada",
-          parrafos: [`Su cita de ${servicio} quedó confirmada. Recibimos su pago.`],
+          parrafos: [
+            `Su cita de ${servicio} quedó confirmada. Recibimos su pago.`,
+            ...(f.paciente_codigo_referido
+              ? [
+                  `Su código de referido es ${f.paciente_codigo_referido}. Compártalo con quien quiera: cuando vengan a su cita y lo mencionen, usted suma para un descuento.`,
+                ]
+              : []),
+          ],
           datos: [
             { etiqueta: "Cuándo", valor: fechaHoraBogota(f.inicia_en) },
             ...(f.sede ? [{ etiqueta: "Dónde", valor: f.sede }] : []),
@@ -201,7 +219,9 @@ export async function verificarPago(
           reservaId: Number(f.reserva_id),
           servicio: f.servicio,
           iniciaEn: f.inicia_en,
-          chatId: f.chat_id,
+          // Si el barrido ya avisó (confirmación desde la web), no se devuelve
+          // chat para que el bot NO mande el aviso de confirmación otra vez.
+          chatId: avisoTg.get(Number(f.reserva_id)) === "ya_enviada" ? null : f.chat_id,
         })),
       };
     });

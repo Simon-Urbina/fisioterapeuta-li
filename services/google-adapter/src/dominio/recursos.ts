@@ -77,6 +77,11 @@ export async function guardarFilaSheetReserva(
   );
 }
 
+/** Borra todos los mapeos fila↔reserva del respaldo en Sheets (para re-sincronizar desde cero). */
+export async function borrarMapeosSheet(db: Db): Promise<void> {
+  await db.query(`DELETE FROM integracion.google_recurso WHERE servicio = 'sheets'`);
+}
+
 const ENTIDAD_TIPO_PACIENTE = "reserva_paciente";
 
 /** Evento en el Calendar PERSONAL del paciente (fase 3) — entidad_tipo distinto, ver comentario arriba. */
