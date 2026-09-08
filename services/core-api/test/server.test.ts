@@ -142,6 +142,45 @@ describe("servidor core-api", () => {
     await app.close();
   });
 
+  it("POST /mantenimiento/expirar devuelve cuántos cupos liberó", async () => {
+    const { db } = crearDbFalsa([[{ expirar_reservas_vencidas: 3 }]]);
+    const app = await levantar(db);
+    const res = await app.inject({
+      method: "POST",
+      url: "/mantenimiento/expirar",
+      headers: { "x-internal-key": CLAVE },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, datos: { liberadas: 3 } });
+    await app.close();
+  });
+
+  it("POST /mantenimiento/expirar sin X-Internal-Key → 401", async () => {
+    const app = await levantar();
+    const res = await app.inject({ method: "POST", url: "/mantenimiento/expirar" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("GET /mantenimiento/digest-diario responde ok (avisos vacío sin admins configurados)", async () => {
+    const app = await levantar();
+    const res = await app.inject({
+      method: "GET",
+      url: "/mantenimiento/digest-diario",
+      headers: { "x-internal-key": CLAVE },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, datos: { avisos: [] } });
+    await app.close();
+  });
+
+  it("GET /mantenimiento/digest-diario sin X-Internal-Key → 401", async () => {
+    const app = await levantar();
+    const res = await app.inject({ method: "GET", url: "/mantenimiento/digest-diario" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
   it("ruta inexistente → 404 sin filtrar detalles", async () => {
     const app = await levantar();
     const res = await app.inject({ method: "GET", url: "/no-existe", headers: { "x-internal-key": CLAVE } });

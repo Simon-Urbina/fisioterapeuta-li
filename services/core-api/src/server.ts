@@ -313,6 +313,38 @@ export function construirServidor(cfg: Config = loadConfig(), db: Db = construir
     });
   });
 
+  // --- Mantenimiento programado ---
+  // n8n lo dispara en un horario (Schedule Trigger): libera los cupos de
+  // reservas que nunca se pagaron. Es el mismo SELECT que corre el timer de
+  // index.ts; exponerlo como endpoint deja que n8n sea el orquestador
+  // visible de este ciclo (regla 1 del README: "n8n orquesta"). Idempotente:
+  // solo toca reservas que siguen 'pendiente_pago' y ya vencieron, así que
+  // que corran los dos a la vez no hace daño. Guard: X-Internal-Key.
+  app.post("/mantenimiento/expirar", async (_req, reply) =>
+    conDominio(reply, async () => {
+      const r = await db.query<{ expirar_reservas_vencidas: number }>(
+        "SELECT agenda.expirar_reservas_vencidas()",
+      );
+      return { liberadas: r.rows[0]?.expirar_reservas_vencidas ?? 0 };
+    }),
+  );
+
+  // Resumen de la agenda del día para Lina, por Telegram. n8n lo dispara en
+  // un horario (workflow digest-diario-lina) y solo reenvía cada `aviso`.
+  // `avisos` sale vacío si no hay CORE_API_ADMIN_CHAT_IDS configurados.
+  app.get("/mantenimiento/digest-diario", async (_req, reply) =>
+    conDominio(reply, async () => {
+      const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+      const desdeIso = `${hoy}T00:00:00-05:00`;
+      const hasta = new Date(desdeIso);
+      hasta.setUTCDate(hasta.getUTCDate() + 1);
+      const citas = await admin.listarCitasAdmin(db, { desdeIso, hastaIso: hasta.toISOString() });
+      const mensajeTelegram = notificaciones.componerDigestDiario(`${hoy}T12:00:00-05:00`, citas);
+      const avisos = [...cfg.adminChatIds].map((chatId) => ({ chatId: String(chatId), mensajeTelegram }));
+      return { fecha: hoy, avisos };
+    }),
+  );
+
   // API de navegador (apps/web). Rutas /api/* con su propia auth.
   registrarRutasWeb(app, db, cfg);
 

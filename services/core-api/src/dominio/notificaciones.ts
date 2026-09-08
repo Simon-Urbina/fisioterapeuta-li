@@ -33,6 +33,8 @@ export interface RecordatorioPendiente {
   iniciaEn: string;
   chatId: string | null;
   pacienteEmail: string | null;
+  /** Cuerpo listo para Telegram: el canal (bot o n8n) solo lo reenvía. */
+  mensajeTelegram: string;
 }
 
 /**
@@ -67,6 +69,125 @@ function fechaHoraBogota(iso: string): string {
     hour12: false,
   }).format(d);
   return `${f}, ${h}`;
+}
+
+/** Solo la hora "HH:MM" en Bogotá (espejo de horaCorta del bot). */
+function horaCortaBogota(iso: string): string {
+  return new Intl.DateTimeFormat("es-CO", {
+    timeZone: "America/Bogota",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+}
+
+/** "jueves, 11 de septiembre" en Bogotá. */
+function fechaLargaBogota(iso: string): string {
+  return new Intl.DateTimeFormat("es-CO", {
+    timeZone: "America/Bogota",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(new Date(iso));
+}
+
+/**
+ * Estados de reserva que ya no cuentan como "cita del día": no van en el
+ * resumen que se le manda a Lina cada mañana.
+ */
+const ESTADOS_MUERTOS = new Set(["cancelada_tarde", "cancelada_a_tiempo", "expirada", "rechazada"]);
+
+export interface CitaDigest {
+  estado: string;
+  iniciaEn: string;
+  servicio: string | null;
+  sede: string | null;
+  paciente: string | null;
+}
+
+/**
+ * Resumen de la agenda del día para Lina, por Telegram — lo dispara n8n
+ * (workflow digest-diario-lina) cada mañana. Igual que los otros mensajes
+ * de este archivo: el texto se arma en core-api, no en el nodo de n8n.
+ * `fechaIso` debe ser un instante del día a resumir (p. ej. mediodía en
+ * Bogotá) para no cruzar el cambio de fecha por zona horaria.
+ */
+export function componerDigestDiario(fechaIso: string, citas: CitaDigest[]): string {
+  const vivas = citas
+    .filter((c) => !ESTADOS_MUERTOS.has(c.estado))
+    // `iniciaEn` puede llegar como Date (node-postgres para timestamptz) o
+    // como string; ordenar por el instante, no por texto.
+    .sort((a, b) => new Date(a.iniciaEn).getTime() - new Date(b.iniciaEn).getTime());
+
+  const encabezado = `🗓️ Agenda de hoy — ${fechaLargaBogota(fechaIso)}`;
+  if (vivas.length === 0) {
+    return `${encabezado}\n\nHoy no tiene citas agendadas.`;
+  }
+
+  const lineas = vivas.map((c) => {
+    const partes = [
+      horaCortaBogota(c.iniciaEn),
+      c.servicio ?? "Cita",
+      c.paciente ?? "paciente",
+      c.sede ?? "",
+    ].filter((p) => p.length > 0);
+    return `• ${partes.join(" · ")}`;
+  });
+
+  const n = vivas.length;
+  return `${encabezado}\n\n${String(n)} ${n === 1 ? "cita" : "citas"}:\n\n${lineas.join("\n")}`;
+}
+
+/**
+ * Cuerpo del recordatorio 24h para Telegram. Se compone acá (no en el nodo
+ * de n8n ni en el bot) para que el canal solo reenvíe: el texto y las
+ * indicaciones por servicio son contenido de negocio. Antes vivía duplicado
+ * en apps/telegram-bot/src/telegram/vigilanciaRecordatorios.ts.
+ */
+function mensajeRecordatorioTelegram(rec: {
+  paciente: string;
+  servicio: string | null;
+  sede: string | null;
+  iniciaEn: string;
+}): string {
+  const servicio = rec.servicio ?? "su cita";
+  const primerNombre = rec.paciente ? rec.paciente.split(" ")[0] : "";
+  return [
+    `Hola${primerNombre ? `, ${primerNombre}` : ""} 👋`,
+    `Le recordamos su cita de ${servicio} mañana.`,
+    "",
+    `Cuándo: ${fechaHoraBogota(rec.iniciaEn)}`,
+    rec.sede ? `Dónde: ${rec.sede}` : "",
+    "",
+    indicacionesPara(rec.servicio),
+    "",
+    "Si necesita cancelar o reprogramar, escríbanos al 311 398 1422.",
+  ]
+    .filter((l) => l.length > 0)
+    .join("\n");
+}
+
+/**
+ * Cuerpo del aviso "cita confirmada" para Telegram (confirmación hecha desde
+ * el panel web). Mismo criterio que mensajeRecordatorioTelegram: antes
+ * duplicado en apps/telegram-bot/src/telegram/vigilanciaConfirmaciones.ts.
+ */
+function mensajeConfirmacionTelegram(c: {
+  servicio: string | null;
+  sede: string | null;
+  iniciaEn: string;
+}): string {
+  return [
+    "¡Su cita quedó confirmada! ✅",
+    `${c.servicio ?? "Su cita"} · ${horaCortaBogota(c.iniciaEn)}`,
+    c.sede ?? "",
+    "",
+    indicacionesPara(c.servicio),
+    "",
+    "¡Le esperamos! 💛",
+  ]
+    .filter((l) => l.length > 0)
+    .join("\n");
 }
 
 /**
@@ -128,6 +249,12 @@ export async function reclamarRecordatorios24h(db: Db): Promise<RecordatorioPend
       iniciaEn: f.inicia_en,
       chatId: f.chat_id,
       pacienteEmail: f.paciente_email,
+      mensajeTelegram: mensajeRecordatorioTelegram({
+        paciente: f.paciente,
+        servicio: f.servicio,
+        sede: f.sede,
+        iniciaEn: f.inicia_en,
+      }),
     }));
   } catch (err) {
     throw normalizarErrorDb(err);
@@ -174,6 +301,8 @@ export interface ConfirmacionTelegramPendiente {
   sede: string | null;
   iniciaEn: string;
   chatId: string;
+  /** Cuerpo listo para Telegram: el canal (bot o n8n) solo lo reenvía. */
+  mensajeTelegram: string;
 }
 
 /**
@@ -281,6 +410,11 @@ export async function listarConfirmacionesTelegramPendientes(
       sede: f.sede,
       iniciaEn: f.inicia_en,
       chatId: f.chat_id,
+      mensajeTelegram: mensajeConfirmacionTelegram({
+        servicio: f.servicio,
+        sede: f.sede,
+        iniciaEn: f.inicia_en,
+      }),
     }));
   } catch (err) {
     throw normalizarErrorDb(err);
