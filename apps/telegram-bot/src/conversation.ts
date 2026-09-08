@@ -423,7 +423,7 @@ async function manejarMensajeEnFlujo(
   return llenarFaltante(estadoPrevio, texto);
 }
 
-/** Lo que el bot sí sabe hacer — se muestra cuando no entiende una solicitud. */
+/** Lo que el bot sí sabe hacer — se muestra a un PACIENTE cuando no entiende. */
 const NO_ENTENDI = [
   "No entendí bien su solicitud. 🤔",
   "",
@@ -435,6 +435,29 @@ const NO_ENTENDI = [
   "",
   "Dígame cuál necesita, o use el menú de abajo.",
 ].join("\n");
+
+/** Igual, pero para un chat de PERSONAL (Lina): opciones administrativas. */
+const NO_ENTENDI_ADMIN = [
+  "No entendí la instrucción. 🤔",
+  "",
+  "Puede pedirme, por ejemplo:",
+  "• «agenda de hoy» · «¿qué hay el viernes?»",
+  "• «agenda a [paciente] el [día] a las [hora]»",
+  "• «cancela la cita de [paciente] del [día]»",
+  "• «pasa la cita de [paciente] del [día] para el [otro día] a las [hora]»",
+  "• «bloquea el [día] de [hora] a [hora]»",
+  "",
+  "O use /pagos, /historia <documento> o /start.",
+].join("\n");
+
+/**
+ * Verbos que dejan claro que un mensaje del PERSONAL quiere agendar de verdad
+ * ("agéndame", "reserva", "prográmame"). Si el NLU dice `crear_sesion` pero
+ * no hay un nombre de paciente ni uno de estos verbos, es casi seguro una
+ * consulta que el modelo chico clasificó mal: no se arranca ningún flujo de
+ * reserva.
+ */
+const RE_VERBO_AGENDAR = /(agend|reserv|programa|pr[oó]gram|s[aá]ca|c[ií]ta[lr]|ponle|cr[eé]a)/i;
 
 /** Traduce una intención por debajo del umbral al botón de menú más parecido. */
 const SUGERENCIA_POR_INTENCION = new Map<string, SugerenciaAccion>([
@@ -466,7 +489,7 @@ function manejarIntencionNueva(
   if (intn.intencion === "desconocida") {
     return {
       estado: estadoInicial(),
-      accion: { tipo: "responder_con_menu", texto: NO_ENTENDI },
+      accion: { tipo: "responder_con_menu", texto: autorizado ? NO_ENTENDI_ADMIN : NO_ENTENDI },
     };
   }
 
@@ -496,6 +519,14 @@ function manejarIntencionNueva(
   }
 
   if (intn.confianza < cfg.BOT_CONFIANZA_MINIMA) {
+    // Al personal no se le ofrece el botón de "pedir una cita": el texto de
+    // sugerencia ("¿quería ver sus citas?") es de paciente y confunde.
+    if (autorizado) {
+      return {
+        estado: estadoInicial(),
+        accion: { tipo: "responder_con_menu", texto: NO_ENTENDI_ADMIN },
+      };
+    }
     const sugerencia = SUGERENCIA_POR_INTENCION.get(intn.intencion);
     return {
       estado: estadoInicial(),
@@ -516,10 +547,29 @@ function manejarIntencionNueva(
     textoUsuario,
   );
 
-  // Un paciente que quiere agendar entra al flujo guiado con botones. El staff
-  // (autorizado) sigue con el bucle de texto, más rápido cuando agenda por otro.
+  // Un paciente que quiere agendar entra al flujo guiado con botones.
   if (intn.intencion === "crear_sesion" && !autorizado) {
     return { estado: estadoInicial(), accion: { tipo: "iniciar_reserva_guiada", entidades } };
+  }
+
+  // El personal agenda por texto ("agenda a Laura el viernes a las 3"), pero
+  // solo si el mensaje realmente pide agendar: trae el nombre del paciente o
+  // un verbo de agendamiento. Si no, casi seguro el modelo clasificó mal una
+  // consulta como `crear_sesion` — no se arranca el flujo de reserva.
+  if (intn.intencion === "crear_sesion" && autorizado) {
+    const cliente = entidades["cliente"];
+    const tieneCliente = typeof cliente === "string" && cliente.trim().length > 0;
+    const pideAgendar = RE_VERBO_AGENDAR.test(textoUsuario);
+    if (!tieneCliente && !pideAgendar) {
+      return {
+        estado: estadoInicial(),
+        accion: { tipo: "responder_con_menu", texto: NO_ENTENDI_ADMIN },
+      };
+    }
+    // Si quiere agendar pero no dio el paciente, se pregunta primero por él
+    // (es lo que core-api va a exigir de todos modos).
+    const conCliente = tieneCliente ? faltantes : ["cliente", ...faltantes.filter((f) => f !== "cliente")];
+    return siguientePaso(armarDesdeIntencion(intn, entidades, conCliente));
   }
 
   // Un paciente que quiere cancelar o reprogramar: flujo guiado (elige de SUS

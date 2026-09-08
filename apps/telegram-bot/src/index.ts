@@ -90,6 +90,7 @@ function main(): void {
           { command: "hoy", description: "Agenda de hoy" },
           { command: "pagos", description: "Pagos pendientes por verificar" },
           { command: "historia", description: "Historia clínica por número de documento" },
+          { command: "ayuda", description: "Ayuda" },
         ],
         { scope: { type: "chat", chat_id: chatId } },
       )

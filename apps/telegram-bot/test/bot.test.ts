@@ -499,6 +499,27 @@ describe("bot (integración)", () => {
     expect(enviados.at(-1)).toContain("le puedo ayudar con");
   });
 
+  it("staff: no entiende -> menú administrativo, sin ofrecer «pedir una cita»", async () => {
+    const nlu = () =>
+      Promise.resolve({
+        ok: true,
+        intencion: { intencion: "desconocida", entidades: {}, confianza: 0, faltantes: [] },
+      } as ResultadoNlu);
+    const { bot, enviados } = crearBotDePrueba(nlu);
+    await bot.handleUpdate(updateTexto("bla bla", 111)); // staff
+    expect(enviados.at(-1)).toContain("/pagos");
+    expect(enviados.at(-1)).not.toContain("Pedir una cita");
+  });
+
+  it("/ayuda muestra el menú de paciente o el de personal según el chat", async () => {
+    const { bot, enviados } = crearBotDePrueba();
+    await bot.handleUpdate(updateTexto("/ayuda", 500)); // paciente
+    expect(enviados[0]).toContain("Pedir una cita");
+    await bot.handleUpdate(updateTexto("/ayuda", 111)); // staff
+    expect(enviados[1]).toContain("Panel de personal");
+    expect(enviados[1]).toContain("/pagos");
+  });
+
   it("un chat sin vínculo pide identificarse por cédula + últimos 4 del teléfono y luego ve sus citas", async () => {
     const futuro = new Date(Date.now() + 5 * 86_400_000).toISOString();
     let vinculado = false;
@@ -1024,14 +1045,15 @@ describe("bot (integración)", () => {
       Promise.resolve(intencion === "consultar_catalogo" ? conCatalogo : vacio);
     const { bot, enviados } = crearBotDePrueba(nlu, n8n);
 
-    // Chat 111 = staff (allowlist de pruebas): sigue el flujo de texto, no el de botones.
+    // Chat 111 = staff (allowlist de pruebas): sigue el flujo de texto, no el
+    // de botones. Sin nombre de paciente, primero se pregunta por él.
     await bot.handleUpdate(updateTexto("quiero agendar una cita", 111));
-    expect(enviados[0]).toContain("servicio");
+    expect(enviados[0]).toContain("paciente");
 
     await bot.handleUpdate(updateTexto("¿qué servicios ofrecen?", 111));
     expect(enviados[1]).toContain("Punción seca");
     expect(enviados[2]).toContain("Sigamos con su cita");
-    expect(enviados[2]).toContain("servicio");
+    expect(enviados[2]).toContain("paciente");
   });
 
   it("/cancelar corta el flujo guiado en curso", async () => {

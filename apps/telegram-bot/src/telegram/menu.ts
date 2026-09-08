@@ -2,6 +2,7 @@ import type { Bot } from "grammy";
 import { nivelDeAcceso } from "../auth.js";
 import {
   AYUDA,
+  AYUDA_ADMIN,
   CANCELADO,
   INFO_ACCIONES,
   INFO_CITA,
@@ -103,7 +104,8 @@ export function registrarMenu(bot: Bot<MiContexto>, deps: FlujoDeps): void {
   bot.command(["servicios", "precios"], verCatalogo);
   bot.command("info", verInfo);
   bot.command(["help", "ayuda"], async (ctx) => {
-    await ctx.reply(AYUDA);
+    const nivel = nivelDeAcceso(cfg, ctx.chat.id);
+    await ctx.reply(nivel === "autorizado" ? AYUDA_ADMIN : AYUDA);
   });
   bot.command("cancelar", async (ctx) => {
     ctx.session = estadoInicial();

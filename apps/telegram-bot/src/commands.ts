@@ -56,21 +56,37 @@ export function inicio(nivel: NivelAcceso): string {
 }
 
 export const AYUDA = [
-  "¡Claro que sí! Con gusto le ayudo con:",
-  "• Los servicios y sus precios",
-  "• Los horarios disponibles para un servicio",
-  "• Reservar una cita",
-  "• Ver sus citas",
-  "• Información del consultorio: horarios, sedes, pago y políticas",
+  "Con gusto le ayudo. Desde el menú (/start) puede:",
+  "• Servicios y precios",
+  "• Pedir una cita",
+  "• Ver, cancelar o reprogramar sus citas",
+  "• Información: horarios, sedes, pago y políticas",
   "",
-  "Comandos:",
-  "/start — inicio y menú",
-  "/help — esta ayuda",
-  "/cancelar — cancelar lo que estemos haciendo",
-  "/id — ver su identificador de chat",
-  "/ping — comprobar que respondo",
+  "También puede escribirme normal:",
+  "• «quiero una cita el sábado en la tarde»",
+  "• «¿cuánto cuesta la punción seca?»",
+  "• «¿qué citas tengo?»",
   "",
-  "Si es su primera cita le pediré su nombre y su teléfono; después ya lo reconozco.",
+  "Comandos: /start · /cancelar (para lo que estemos haciendo) · /ping",
+  "",
+  "Si es su primera cita le pediré sus datos; después ya lo reconozco.",
+].join("\n");
+
+/** Ayuda para un chat de personal (Lina). Refleja el menú de admin. */
+export const AYUDA_ADMIN = [
+  "🔧 Panel de personal. Desde el menú (/start):",
+  "• 📅 Agenda de hoy — también con /hoy",
+  "• 💳 Pagos pendientes — también con /pagos",
+  "• Historia clínica — /historia <número de documento>",
+  "",
+  "Por texto, en lenguaje normal:",
+  "• Ver la agenda: «¿qué tengo mañana?», «agenda del viernes»",
+  "• Agendar: «agenda a [paciente] el [día] a las [hora] en [sede]»",
+  "• Cancelar: «cancela la cita de [paciente] del [día]»",
+  "• Reprogramar: «pasa la cita de [paciente] del [día] para el [otro día] a las [hora]»",
+  "• Bloquear un horario: «bloquea el [día] de [hora] a [hora] en [sede]»",
+  "",
+  "Comandos: /start · /cancelar · /ping",
 ].join("\n");
 
 export const INFO_HORARIOS = [

@@ -115,16 +115,67 @@ describe("procesarTexto", () => {
     expect(r.estado.esperandoConfirmacion).toBe(true);
   });
 
-  it("confianza baja -> no actúa, ofrece menú con sugerencia", async () => {
+  it("confianza baja (paciente) -> no actúa, ofrece menú con sugerencia", async () => {
     const r = await procesarTexto(
       cfg,
       estadoInicial(),
       "mmm no sé",
       nluFijo(ok("crear_sesion", { confianza: 0.2 })),
+      false, // paciente
     );
     expect(r.accion.tipo).toBe("responder_con_menu");
     if (r.accion.tipo === "responder_con_menu") expect(r.accion.sugerencia).toBe("agendar");
     expect(r.estado).toEqual(estadoInicial());
+  });
+
+  it("staff: una consulta que el modelo clasifica mal como crear_sesion NO arranca una reserva", async () => {
+    const r = await procesarTexto(
+      cfg,
+      estadoInicial(),
+      "cuántas citas hay el viernes",
+      nluFijo(ok("crear_sesion", { entidades: { fecha: "2026-09-11" }, confianza: 0.9, faltantes: ["hora"] })),
+      true, // staff
+    );
+    expect(r.accion.tipo).toBe("responder_con_menu");
+    if (r.accion.tipo === "responder_con_menu") {
+      expect(r.accion.sugerencia).toBeUndefined();
+      expect(r.accion.texto).toContain("/pagos");
+    }
+    expect(r.estado).toEqual(estadoInicial());
+  });
+
+  it("staff: «agenda a Laura...» sí arranca la reserva por texto y pregunta lo que falte", async () => {
+    const r = await procesarTexto(
+      cfg,
+      estadoInicial(),
+      "agenda a Laura el viernes a las 3",
+      nluFijo(ok("crear_sesion", { entidades: { cliente: "Laura", hora: "15:00" }, confianza: 0.9, faltantes: ["servicio"] })),
+      true, // staff
+    );
+    expect(r.accion.tipo).toBe("pedir_dato");
+    expect(r.estado.intencion).toBe("crear_sesion");
+  });
+
+  it("staff: «quiero agendar una cita» sin nombre pregunta primero por el paciente", async () => {
+    const r = await procesarTexto(
+      cfg,
+      estadoInicial(),
+      "quiero agendar una cita",
+      nluFijo(ok("crear_sesion", { confianza: 0.95, faltantes: ["servicio", "fecha", "hora"] })),
+      true, // staff
+    );
+    expect(r.accion.tipo).toBe("pedir_dato");
+    expect(textoDe(r.accion)).toContain("paciente");
+    expect(r.estado.faltantes[0]).toBe("cliente");
+  });
+
+  it("intención 'desconocida' para staff -> menú administrativo, no el de paciente", async () => {
+    const r = await procesarTexto(cfg, estadoInicial(), "algo raro", nluFijo(ok("desconocida")), true);
+    expect(r.accion.tipo).toBe("responder_con_menu");
+    if (r.accion.tipo === "responder_con_menu") {
+      expect(r.accion.texto).toContain("/pagos");
+      expect(r.accion.texto).not.toContain("Pedir una cita");
+    }
   });
 
   it("NLU caído -> respuesta estructurada, sin romperse", async () => {
