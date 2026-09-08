@@ -168,4 +168,44 @@ describe("GET /oauth/callback", () => {
     expect(llamadas).toHaveLength(2);
     await app.close();
   });
+
+  describe("POST /outbox/procesar", () => {
+    const clientesFalsos = {
+      gmail: { enviarCorreo: vi.fn() },
+      calendar: { crearEvento: vi.fn(), actualizarEvento: vi.fn(), eliminarEvento: vi.fn() },
+    };
+
+    it("sin clientes de Google configurados → 503", async () => {
+      const app = construirServidor(crearDbFalsa().db, cfg, depsFalsas());
+      const res = await app.inject({ method: "POST", url: "/outbox/procesar" });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({ ok: false, error: "no_configurado" });
+      await app.close();
+    });
+
+    it("con clientes y sin eventos pendientes → 200 con el desglose vacío", async () => {
+      const app = construirServidor(crearDbFalsa().db, cfg, depsFalsas(), clientesFalsos);
+      const res = await app.inject({ method: "POST", url: "/outbox/procesar" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        ok: true,
+        datos: { tomados: 0, procesados: 0, fallidos: 0, porDestino: {} },
+      });
+      await app.close();
+    });
+
+    it("con INTERNAL_API_KEY, rechaza sin el header → 401", async () => {
+      const cfgConClave = { ...cfg, INTERNAL_API_KEY: "clave-de-pruebas-0123456789" };
+      const app = construirServidor(crearDbFalsa().db, cfgConClave, depsFalsas(), clientesFalsos);
+      const res = await app.inject({ method: "POST", url: "/outbox/procesar" });
+      expect(res.statusCode).toBe(401);
+      const ok = await app.inject({
+        method: "POST",
+        url: "/outbox/procesar",
+        headers: { "x-internal-key": "clave-de-pruebas-0123456789" },
+      });
+      expect(ok.statusCode).toBe(200);
+      await app.close();
+    });
+  });
 });

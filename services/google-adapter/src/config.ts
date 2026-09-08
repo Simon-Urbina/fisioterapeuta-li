@@ -33,6 +33,17 @@ const EnvSchema = z.object({
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(500).max(60_000).default(5000),
   OUTBOX_LOTE: z.coerce.number().int().min(1).max(100).default(20),
 
+  // Con "false", este servicio NO corre su propio `setInterval` sobre
+  // integracion.outbox: quien marca el ritmo es n8n, llamando a
+  // POST /outbox/procesar (ver automation/n8n/). "true" = autónomo (útil
+  // para correrlo sin n8n).
+  GOOGLE_ADAPTER_OUTBOX_POLL: z.enum(["true", "false"]).default("true"),
+
+  // Secreto compartido para proteger POST /outbox/*. Si no está, esas rutas
+  // quedan sin auth (solo aceptable en local). Los redirects OAuth y /health
+  // no lo piden. Mínimo 16 caracteres.
+  INTERNAL_API_KEY: z.string().min(16).optional(),
+
   TIMEZONE: z.string().min(1).default("America/Bogota"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 });

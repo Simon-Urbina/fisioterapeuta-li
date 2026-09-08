@@ -160,6 +160,9 @@ export interface ResultadoLote {
   tomados: number;
   procesados: number;
   fallidos: number;
+  /** Desglose por `destino` (gmail/calendar/sheets/...), para que quien
+   *  dispara el ciclo (n8n) vea el fan-out sin decodificar cada evento. */
+  porDestino: Record<string, { ok: number; fallo: number }>;
 }
 
 /** Un ciclo: toma hasta `limite` eventos pendientes y los procesa uno por uno. */
@@ -172,17 +175,25 @@ export async function procesarPendientes(
   const eventos = await outbox.tomarPendientes(db, limite);
   let procesados = 0;
   let fallidos = 0;
+  const porDestino: Record<string, { ok: number; fallo: number }> = {};
+  const contar = (destino: string | null, campo: "ok" | "fallo"): void => {
+    const clave = destino ?? "sin_destino";
+    porDestino[clave] ??= { ok: 0, fallo: 0 };
+    porDestino[clave][campo] += 1;
+  };
 
   for (const evento of eventos) {
     try {
       await procesarUnEvento(db, clientes, evento, zonaHoraria);
       await outbox.marcarCompletado(db, evento.id);
       procesados += 1;
+      contar(evento.destino, "ok");
     } catch (err) {
       await outbox.marcarFallido(db, evento, err instanceof Error ? err.message : String(err));
       fallidos += 1;
+      contar(evento.destino, "fallo");
     }
   }
 
-  return { tomados: eventos.length, procesados, fallidos };
+  return { tomados: eventos.length, procesados, fallidos, porDestino };
 }

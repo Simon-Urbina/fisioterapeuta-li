@@ -50,7 +50,7 @@ describe("consumer/procesarPendientes", () => {
     ]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 1, procesados: 1, fallidos: 0 });
+    expect(r).toMatchObject({ tomados: 1, procesados: 1, fallidos: 0 });
     expect(clientes.gmail.enviarCorreo).toHaveBeenCalledWith({ destinatario: "a@b.com", asunto: "Hola", texto: "Mensaje" });
     expect(llamadas[1]?.texto).toContain("'completado'");
   });
@@ -65,7 +65,7 @@ describe("consumer/procesarPendientes", () => {
     ]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 1, procesados: 1, fallidos: 0 });
+    expect(r).toMatchObject({ tomados: 1, procesados: 1, fallidos: 0 });
     expect(clientes.calendar.crearEvento).toHaveBeenCalledWith(
       "cal@tunja",
       expect.objectContaining({ resumen: "Punción Seca — Laura Gómez" }),
@@ -82,7 +82,7 @@ describe("consumer/procesarPendientes", () => {
     ]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 1, procesados: 1, fallidos: 0 });
+    expect(r).toMatchObject({ tomados: 1, procesados: 1, fallidos: 0 });
     expect(clientes.calendar.actualizarEvento).toHaveBeenCalledWith("cal@tunja", "evt-viejo", expect.any(Object));
     expect(clientes.calendar.crearEvento).not.toHaveBeenCalled();
   });
@@ -95,7 +95,7 @@ describe("consumer/procesarPendientes", () => {
     ]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 1, procesados: 1, fallidos: 0 });
+    expect(r).toMatchObject({ tomados: 1, procesados: 1, fallidos: 0 });
     expect(clientes.calendar.crearEvento).not.toHaveBeenCalled();
   });
 
@@ -109,7 +109,7 @@ describe("consumer/procesarPendientes", () => {
     ]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 1, procesados: 1, fallidos: 0 });
+    expect(r).toMatchObject({ tomados: 1, procesados: 1, fallidos: 0 });
     expect(clientes.calendar.eliminarEvento).toHaveBeenCalledWith("cal@tunja", "evt-viejo");
   });
 
@@ -121,7 +121,7 @@ describe("consumer/procesarPendientes", () => {
     ]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 1, procesados: 1, fallidos: 0 });
+    expect(r).toMatchObject({ tomados: 1, procesados: 1, fallidos: 0 });
     expect(clientes.calendar.eliminarEvento).not.toHaveBeenCalled();
   });
 
@@ -132,7 +132,7 @@ describe("consumer/procesarPendientes", () => {
     ]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 1, procesados: 0, fallidos: 1 });
+    expect(r).toMatchObject({ tomados: 1, procesados: 0, fallidos: 1 });
     expect(llamadas[1]?.valores[1]).toBe("fallido");
   });
 
@@ -143,7 +143,7 @@ describe("consumer/procesarPendientes", () => {
     ]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 1, procesados: 0, fallidos: 1 });
+    expect(r).toMatchObject({ tomados: 1, procesados: 0, fallidos: 1 });
     expect(clientes.gmail.enviarCorreo).not.toHaveBeenCalled();
     expect(llamadas[1]?.valores[1]).toBe("fallido");
   });
@@ -152,6 +152,6 @@ describe("consumer/procesarPendientes", () => {
     const { db } = crearDbFalsa([[]]);
     const clientes = clientesFalsos();
     const r = await procesarPendientes(db, clientes, 20, "America/Bogota");
-    expect(r).toEqual({ tomados: 0, procesados: 0, fallidos: 0 });
+    expect(r).toMatchObject({ tomados: 0, procesados: 0, fallidos: 0 });
   });
 });

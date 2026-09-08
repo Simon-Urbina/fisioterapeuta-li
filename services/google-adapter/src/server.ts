@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import { opcionesLog } from "./logger.js";
@@ -10,9 +11,18 @@ import {
   intercambiarCodigo,
   construirCalendarClient,
 } from "./googleClients.js";
+import { procesarPendientes, type ClientesGoogle } from "./consumer.js";
 import * as autorizacion from "./dominio/autorizacionPaciente.js";
 import * as citas from "./dominio/citas.js";
 import * as recursos from "./dominio/recursos.js";
+
+/** Comparación en tiempo constante del header contra el secreto esperado. */
+function claveValida(recibida: string | undefined, esperada: string): boolean {
+  if (typeof recibida !== "string" || recibida.length === 0) return false;
+  const a = Buffer.from(recibida);
+  const b = Buffer.from(esperada);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 /**
  * Puente hacia `googleapis` inyectable (mismo criterio que `Db`): las
@@ -58,8 +68,28 @@ function paginaHtml(mensaje: string): string {
   return `<!doctype html><html lang="es"><meta charset="utf-8"><body style="font-family:sans-serif;max-width:32rem;margin:3rem auto;text-align:center"><p>${mensaje}</p></body></html>`;
 }
 
-export function construirServidor(db: Db, cfg?: Config, deps: DepsOAuthPaciente = depsOAuthReales): FastifyInstance {
+export function construirServidor(
+  db: Db,
+  cfg?: Config,
+  deps: DepsOAuthPaciente = depsOAuthReales,
+  // Clientes de Google ya construidos (Gmail/Calendar/Sheets). Solo se pasan
+  // desde index.ts cuando hay credenciales; sin ellos, POST /outbox/procesar
+  // responde 503. `server.test.ts` no los pasa.
+  clientes?: ClientesGoogle,
+): FastifyInstance {
   const app = Fastify({ logger: opcionesLog() });
+
+  // Guard solo para /outbox/*: n8n manda X-Internal-Key. Los redirects OAuth
+  // (navegador) y /health quedan abiertos como estaban.
+  app.addHook("onRequest", async (req, reply) => {
+    if (!req.url.startsWith("/outbox")) return;
+    if (!cfg?.INTERNAL_API_KEY) return; // sin secreto configurado: local, sin guard
+    const header = req.headers["x-internal-key"];
+    const valor = Array.isArray(header) ? header[0] : header;
+    if (!claveValida(valor, cfg.INTERNAL_API_KEY)) {
+      await reply.code(401).send({ error: "no_autorizado" });
+    }
+  });
 
   app.get("/health", async (_req, reply) => {
     try {
@@ -68,6 +98,23 @@ export function construirServidor(db: Db, cfg?: Config, deps: DepsOAuthPaciente 
     } catch (err) {
       app.log.error({ err: err instanceof Error ? err.message : String(err) }, "health: base no responde");
       return reply.code(503).send({ servicio: "google-adapter", ok: false, db: { ok: false } });
+    }
+  });
+
+  // Un ciclo del consumidor de integracion.outbox, disparado por n8n en un
+  // horario (workflow outbox-google). Toma un lote de eventos pendientes,
+  // los ejecuta ramificando por `destino` (gmail/calendar/sheets — ver
+  // consumer.ts) y los marca. Devuelve el desglose para que n8n lo registre.
+  app.post("/outbox/procesar", async (_req, reply) => {
+    if (!clientes || !cfg) {
+      return reply.code(503).send({ ok: false, error: "no_configurado" });
+    }
+    try {
+      const datos = await procesarPendientes(db, clientes, cfg.OUTBOX_LOTE, cfg.TIMEZONE);
+      return { ok: true, datos };
+    } catch (err) {
+      app.log.error({ err: err instanceof Error ? err.message : String(err) }, "outbox/procesar falló");
+      return reply.code(500).send({ ok: false, error: "error_interno" });
     }
   });
 
