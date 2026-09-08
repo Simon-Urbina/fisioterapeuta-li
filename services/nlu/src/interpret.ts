@@ -1,5 +1,6 @@
 import { loadConfig } from "./config.js";
 import {
+  EntidadesSchema,
   IntencionSchema,
   NOMBRES_ENTIDAD,
   desconocida,
@@ -62,32 +63,51 @@ const NOMBRES_ENTIDAD_SET = new Set<string>(NOMBRES_ENTIDAD);
 
 /**
  * Limpieza tolerante del objeto crudo del modelo ANTES de validar:
- * descarta claves de entidad desconocidas y filtra/deduplica `faltantes`
- * contra la misma lista blanca (un modelo de 3B a veces alucina un nombre
- * que no existe, p.ej. "nombre" — se descarta en vez de tumbar toda la
- * interpretación). Lo que quede se valida con Zod de forma estricta; si no
- * pasa, es fallback.
+ *  - descarta claves de entidad desconocidas;
+ *  - valida CADA entidad contra su forma individual y descarta solo la que
+ *    no cumpla (p. ej. hora "3 pm", fecha "viernes") en vez de tumbar toda
+ *    la interpretación por una entidad mal formateada — la causa #1 de
+ *    "no entendí" evitables. Si el modelo la intentó dar, es que la
+ *    intención la necesita: se anota en `faltantes`;
+ *  - filtra/deduplica `faltantes` contra la lista blanca (un modelo chico
+ *    a veces alucina un nombre que no existe, p. ej. "nombre").
+ * Lo que quede se valida con Zod de forma estricta; si no pasa, es fallback.
  */
 function prelimpiar(crudo: unknown): unknown {
   if (typeof crudo !== "object" || crudo === null) return crudo;
   const obj = crudo as Record<string, unknown>;
+  const esCharla = obj["intencion"] === "charla_general";
 
   const entidadesRaw = obj["entidades"];
   const entidadesIn =
     typeof entidadesRaw === "object" && entidadesRaw !== null ? entidadesRaw : {};
 
-  // Solo se conservan claves de la lista blanca; el acceso es por Reflect.get
-  // (clave de un tuple `const`, no un índice dinámico controlable).
-  const entidades = Object.fromEntries(
-    NOMBRES_ENTIDAD.map((clave) => [clave, Reflect.get(entidadesIn, clave)] as const)
-      .filter(([, v]) => v !== undefined)
-      .map(([clave, v]) => [clave, typeof v === "string" ? v.normalize("NFC").trim() : v]),
-  );
+  // Solo claves de la lista blanca; el acceso es por Reflect.get (clave de un
+  // tuple `const`, no un índice dinámico controlable). Cada valor se prueba
+  // contra `EntidadesSchema` de a una clave: si no pasa el formato, se cae
+  // sola y se apunta como faltante.
+  const paresEntidad: [string, unknown][] = [];
+  const faltantesPorFormato: string[] = [];
+  for (const clave of NOMBRES_ENTIDAD) {
+    const bruto: unknown = Reflect.get(entidadesIn, clave);
+    if (bruto === undefined || bruto === null) continue;
+    const valor: unknown = typeof bruto === "string" ? bruto.normalize("NFC").trim() : bruto;
+    if (valor === "") continue;
+    if (EntidadesSchema.safeParse({ [clave]: valor }).success) {
+      paresEntidad.push([clave, valor]);
+    } else if (!esCharla) {
+      faltantesPorFormato.push(clave);
+    }
+  }
+  const entidades = Object.fromEntries(paresEntidad);
 
   const faltantesRaw = obj["faltantes"];
   const faltantesIn = Array.isArray(faltantesRaw) ? faltantesRaw : [];
   const faltantes = [
-    ...new Set(faltantesIn.filter((x): x is string => typeof x === "string" && NOMBRES_ENTIDAD_SET.has(x))),
+    ...new Set([
+      ...faltantesIn.filter((x): x is string => typeof x === "string" && NOMBRES_ENTIDAD_SET.has(x)),
+      ...faltantesPorFormato,
+    ]),
   ];
 
   const respuestaRaw = obj["respuesta"];

@@ -5,7 +5,8 @@ import security from "eslint-plugin-security";
 export default tseslint.config(
   {
     // El propio archivo de config no se lintea con reglas con tipos.
-    ignores: ["dist/**", "node_modules/**", "coverage/**", "eslint.config.js"],
+    // evals/ son scripts sueltos de Node (no forman parte del proyecto TS).
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "eslint.config.js", "evals/**"],
   },
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,

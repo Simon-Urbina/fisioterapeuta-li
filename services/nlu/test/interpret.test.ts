@@ -74,6 +74,37 @@ describe("interpretar()", () => {
     expect(r.intencion.faltantes).toEqual([]);
   });
 
+  it("descarta una entidad con formato inválido y la anota como faltante, sin tumbar la intención", async () => {
+    const chat = chatQueDevuelve(
+      JSON.stringify({
+        intencion: "crear_sesion",
+        entidades: { servicio: "punción seca", fecha: "2026-09-12", hora: "3 pm" },
+        confianza: 0.9,
+        faltantes: [],
+      }),
+    );
+    const r = await interpretar("quiero punción seca el viernes a las 3 pm", { ...OPTS_HOY, chat });
+    expect(r.usoFallback).toBe(false);
+    expect(r.intencion.intencion).toBe("crear_sesion");
+    expect(r.intencion.entidades).toEqual({ servicio: "punción seca", fecha: "2026-09-12" });
+    expect(r.intencion.faltantes).toContain("hora");
+  });
+
+  it("conserva las entidades bien formadas aunque otra venga mal", async () => {
+    const chat = chatQueDevuelve(
+      JSON.stringify({
+        intencion: "modificar_sesion",
+        entidades: { fecha: "viernes", hora: "15:00" },
+        confianza: 0.8,
+        faltantes: [],
+      }),
+    );
+    const r = await interpretar("cámbiala al viernes a las 3", { ...OPTS_HOY, chat });
+    expect(r.usoFallback).toBe(false);
+    expect(r.intencion.entidades).toEqual({ hora: "15:00" });
+    expect(r.intencion.faltantes).toContain("fecha");
+  });
+
   it("deduplica 'faltantes' repetidos del modelo", async () => {
     const chat = chatQueDevuelve(
       JSON.stringify({
