@@ -198,7 +198,7 @@ export function construirSheetsClient(auth: InstanceType<typeof google.auth.OAut
   /** Extrae el número de fila de un `updatedRange` tipo "Reservas!A5:E5". */
   function filaDeRango(rango: string | null | undefined): number {
     const m = /![A-Z]+(\d+)/.exec(rango ?? "");
-    if (!m || !m[1]) throw new Error(`No pude interpretar la fila desde el rango devuelto por Sheets: "${String(rango)}".`);
+    if (!m?.[1]) throw new Error(`No pude interpretar la fila desde el rango devuelto por Sheets: "${String(rango)}".`);
     return Number(m[1]);
   }
 

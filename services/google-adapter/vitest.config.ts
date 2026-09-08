@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "node",
     env: {
       NODE_ENV: "test",
-      DATABASE_URL: "postgresql://fisio:pruebas@127.0.0.1:5432/fisio_li_test",
+      DATABASE_URL: "postgresql://127.0.0.1:5432/fisio_li_test",
       GOOGLE_ADAPTER_PORT: "8200",
       GOOGLE_CLIENT_ID: "cliente-de-pruebas",
       GOOGLE_CLIENT_SECRET: "secreto-de-pruebas",

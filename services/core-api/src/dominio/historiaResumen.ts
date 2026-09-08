@@ -60,7 +60,8 @@ export async function resumenHistoria(db: Db, documento: string): Promise<Result
     };
   }
 
-  const fila = r.rows[0]!;
+  const fila = r.rows[0];
+  if (fila === undefined) return { tipo: "no_encontrado" };
   const pacienteId = Number(fila.id);
   const [antecedentes, anamnesis, vitales, dolor, evoluciones, citas] = await Promise.all([
     clinico.listarAntecedentesPaciente(db, pacienteId),

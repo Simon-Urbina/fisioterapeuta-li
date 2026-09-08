@@ -670,7 +670,7 @@ export interface IntegracionAdmin {
 
 async function ping(url: string, timeoutMs = 2500): Promise<{ ok: boolean; cuerpo: unknown }> {
   const ctrl = new AbortController();
-  const temporizador = setTimeout(() => ctrl.abort(), timeoutMs);
+  const temporizador = setTimeout(() => { ctrl.abort(); }, timeoutMs);
   try {
     const resp = await fetch(url, { signal: ctrl.signal });
     const cuerpo: unknown = await resp.json().catch(() => null);
@@ -814,7 +814,7 @@ export async function crearServicioAdmin(db: Db, input: CrearServicioInput): Pro
           input.bufferPosteriorMinutos,
         ],
       );
-      const servicioId = r.rows[0]!.id;
+      const servicioId = (r.rows[0] as { id: number }).id;
 
       if (input.tarifaInicial) {
         await tx.query(
@@ -915,7 +915,7 @@ export async function agregarTarifaAdmin(
        RETURNING id`,
       [servicioId, input.nombre, input.sesionesIncluidas, input.cupoPersonas, input.valorTotal],
     );
-    return { id: r.rows[0]!.id };
+    return { id: (r.rows[0] as { id: number }).id };
   } catch (err) {
     throw normalizarErrorDb(err);
   }

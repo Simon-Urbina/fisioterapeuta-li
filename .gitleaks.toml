@@ -38,4 +38,7 @@ regexes = [
   '''clave_compartida_entre_servicios_internos''',
   '''TU_TOKEN_AQUI''',
   '''00000000-0000-0000-0000-000000000000''',
+  # DSN de la base de pruebas en vitest.config.ts: nunca se conecta (los tests
+  # usan una base falsa) y quedo en el historial de commits viejos.
+  '''postgresql://fisio:pruebas@127\.0\.0\.1:5432/fisio_li_test''',
 ]

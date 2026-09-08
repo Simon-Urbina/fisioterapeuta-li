@@ -126,8 +126,8 @@ export interface AnamnesisRegistro {
 
 export async function listarAnamnesis(db: Db, pacienteId: number): Promise<AnamnesisRegistro[]> {
   const r = await db.query<{
-    id: number;
-    reserva_id: number | null;
+    id: string;
+    reserva_id: string | null;
     motivo_consulta: string | null;
     motivo_detalle: string | null;
     descripcion_paciente: string | null;
@@ -139,7 +139,7 @@ export async function listarAnamnesis(db: Db, pacienteId: number): Promise<Anamn
     objetivos_terapeuticos: string | null;
     registrado_por: string;
     registrado_en: string;
-    anula_a_id: number | null;
+    anula_a_id: string | null;
     motivo_correccion: string | null;
   }>(
     `SELECT an.id, an.reserva_id, mc.nombre AS motivo_consulta, an.motivo_detalle, an.descripcion_paciente,
@@ -193,7 +193,7 @@ export async function crearAnamnesis(
   registradoPor: string,
 ): Promise<{ id: number }> {
   try {
-    const r = await db.query<{ id: number }>(
+    const r = await db.query<{ id: string }>(
       `INSERT INTO clinico.anamnesis
          (paciente_id, reserva_id, motivo_consulta_id, motivo_detalle, descripcion_paciente,
           enfermedad_actual, inicio_sintomas, causa_aparente, tratamientos_previos,
@@ -217,7 +217,7 @@ export async function crearAnamnesis(
         input.motivoCorreccion ?? null,
       ],
     );
-    return { id: Number(r.rows[0]!.id) };
+    return { id: Number((r.rows[0] as { id: string }).id) };
   } catch (err) {
     throw normalizarErrorDb(err);
   }
@@ -247,7 +247,7 @@ export interface SignosVitalesRegistro {
 
 export async function listarSignosVitales(db: Db, pacienteId: number): Promise<SignosVitalesRegistro[]> {
   const r = await db.query<{
-    id: number;
+    id: string;
     sistolica: number | null;
     diastolica: number | null;
     frecuencia_cardiaca: number | null;
@@ -261,7 +261,8 @@ export async function listarSignosVitales(db: Db, pacienteId: number): Promise<S
     estado_frecuencia_respiratoria: string | null;
     estado_saturacion: string | null;
     estado_imc: string | null;
-    requiere_atencion: boolean;
+    // OR con NULL en SQL da NULL, no false, cuando falta algun signo vital.
+    requiere_atencion: boolean | null;
     tomado_en: string;
     tomado_por: string | null;
   }>(`SELECT * FROM clinico.v_signos_vitales WHERE paciente_id = $1 ORDER BY tomado_en DESC`, [pacienteId]);
@@ -306,7 +307,7 @@ export async function crearSignosVitales(
   tomadoPor: string,
 ): Promise<{ id: number }> {
   try {
-    const r = await db.query<{ id: number }>(
+    const r = await db.query<{ id: string }>(
       `INSERT INTO clinico.signos_vitales
          (paciente_id, reserva_id, sistolica, diastolica, frecuencia_cardiaca,
           frecuencia_respiratoria, saturacion_o2, peso_kg, talla_cm, tomado_por)
@@ -325,7 +326,7 @@ export async function crearSignosVitales(
         tomadoPor,
       ],
     );
-    return { id: Number(r.rows[0]!.id) };
+    return { id: Number((r.rows[0] as { id: string }).id) };
   } catch (err) {
     throw normalizarErrorDb(err);
   }
@@ -347,7 +348,7 @@ export interface EvaluacionDolorRegistro {
 
 export async function listarEvaluacionesDolor(db: Db, pacienteId: number): Promise<EvaluacionDolorRegistro[]> {
   const r = await db.query<{
-    id: number;
+    id: string;
     intensidad: number;
     clasificacion: string;
     comportamiento: string | null;
@@ -396,7 +397,7 @@ export async function crearEvaluacionDolor(
 ): Promise<{ id: number }> {
   try {
     return await db.tx(async (tx) => {
-      const r = await tx.query<{ id: number }>(
+      const r = await tx.query<{ id: string }>(
         `INSERT INTO clinico.evaluacion_dolor
            (paciente_id, reserva_id, intensidad, comportamiento, localizacion, zona_id, evaluado_por)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -411,7 +412,7 @@ export async function crearEvaluacionDolor(
           evaluadoPor,
         ],
       );
-      const id = Number(r.rows[0]!.id);
+      const id = Number((r.rows[0] as { id: string }).id);
       for (const tipoDolorId of input.tiposDolorIds ?? []) {
         await tx.query(
           `INSERT INTO clinico.evaluacion_dolor_tipo (evaluacion_id, tipo_dolor_id) VALUES ($1, $2)`,
@@ -443,8 +444,8 @@ export interface EvolucionRegistro {
 
 export async function listarEvoluciones(db: Db, pacienteId: number): Promise<EvolucionRegistro[]> {
   const r = await db.query<{
-    id: number;
-    reserva_id: number;
+    id: string;
+    reserva_id: string;
     subjetivo: string | null;
     objetivo: string | null;
     analisis: string | null;
@@ -452,7 +453,7 @@ export async function listarEvoluciones(db: Db, pacienteId: number): Promise<Evo
     tecnicas_aplicadas: string | null;
     registrado_por: string;
     registrado_en: string;
-    anula_a_id: number | null;
+    anula_a_id: string | null;
     motivo_correccion: string | null;
   }>(
     `SELECT id, reserva_id, subjetivo, objetivo, analisis, plan, tecnicas_aplicadas,
@@ -495,7 +496,7 @@ export async function crearEvolucion(
   registradoPor: string,
 ): Promise<{ id: number }> {
   try {
-    const r = await db.query<{ id: number }>(
+    const r = await db.query<{ id: string }>(
       `INSERT INTO clinico.evolucion
          (paciente_id, reserva_id, subjetivo, objetivo, analisis, plan, tecnicas_aplicadas,
           registrado_por, anula_a_id, motivo_correccion)
@@ -514,7 +515,7 @@ export async function crearEvolucion(
         input.motivoCorreccion ?? null,
       ],
     );
-    return { id: Number(r.rows[0]!.id) };
+    return { id: Number((r.rows[0] as { id: string }).id) };
   } catch (err) {
     throw normalizarErrorDb(err);
   }
@@ -534,7 +535,7 @@ export interface CitaPacienteAdmin {
 
 export async function listarCitasDePaciente(db: Db, pacienteId: number): Promise<CitaPacienteAdmin[]> {
   const r = await db.query<{
-    reserva_id: number;
+    reserva_id: string;
     estado: string;
     inicia_en: string;
     termina_en: string;

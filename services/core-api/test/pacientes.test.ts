@@ -109,7 +109,7 @@ describe("crearPacienteConVinculo", () => {
     expect(r.codigoReferido).toBe("LAUR0043");
     expect(llamadas[1]?.texto).toContain("codigo_referido");
     expect(llamadas[1]?.valores).toEqual(["FORT0036"]); // normalizado a mayúsculas
-    expect(llamadas[2]?.valores?.[6]).toBe(5); // referido_por_paciente_id
+    expect(llamadas[2]?.valores[6]).toBe(5); // referido_por_paciente_id
   });
 
   it("con «no» como código de referido: no consulta y guarda null", async () => {
@@ -122,7 +122,7 @@ describe("crearPacienteConVinculo", () => {
       chatId: 222,
     });
     expect(llamadas).toHaveLength(3); // sin la consulta del código
-    expect(llamadas[1]?.valores?.[6]).toBe(null);
+    expect(llamadas[1]?.valores[6]).toBe(null);
   });
 
   it("documento ya existente: reutiliza el paciente, no lo vuelve a crear", async () => {
