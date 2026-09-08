@@ -38,6 +38,9 @@ jobs:
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
+          # gitleaks-action v2 exige el token para escanear pull requests
+          # (lista los commits del PR por la API). El token automatico basta.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
 
   paquetes:
