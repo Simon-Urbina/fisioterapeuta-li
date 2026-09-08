@@ -27,6 +27,7 @@ describe("formatearResultado", () => {
     const texto = formatearResultado("consultar_agenda", r);
     expect(texto).toContain("Laura Gómez");
     expect(texto).toContain("05/09 15:00");
+    expect(texto).toContain("Confirmada"); // estado en palabras, no el código crudo
   });
 
   it("consultar_agenda sin citas avisa que no hay nada", () => {

@@ -4,6 +4,8 @@ import { crearBot } from "./bot.js";
 import { coreApi } from "./coreApiClient.js";
 import { iniciarVigilanciaPagos } from "./telegram/vigilanciaPagos.js";
 import { iniciarVigilanciaRecordatorios } from "./telegram/vigilanciaRecordatorios.js";
+import { iniciarVigilanciaConfirmaciones } from "./telegram/vigilanciaConfirmaciones.js";
+import { iniciarVigilanciaAvisos } from "./telegram/vigilanciaAvisos.js";
 
 function main(): void {
   const cfg = loadConfig();
@@ -22,11 +24,20 @@ function main(): void {
   // Recordatorio de cita 24h antes (ver telegram/vigilanciaRecordatorios.ts).
   const detenerRecordatorios = iniciarVigilanciaRecordatorios(bot, { cfg, cApi: coreApi });
 
+  // Aviso "cita confirmada" cuando se confirmó desde el panel web (ver
+  // telegram/vigilanciaConfirmaciones.ts).
+  const detenerConfirmaciones = iniciarVigilanciaConfirmaciones(bot, { cfg, cApi: coreApi });
+
+  // Avisos simples con cuerpo ya redactado (felicitación por referidos, etc.).
+  const detenerAvisos = iniciarVigilanciaAvisos(bot, { cfg, cApi: coreApi });
+
   for (const señal of ["SIGINT", "SIGTERM"] as const) {
     process.once(señal, () => {
       logger.info(`${señal} recibido, deteniendo el bot…`);
       detenerVigilancia();
       detenerRecordatorios();
+      detenerConfirmaciones();
+      detenerAvisos();
       void bot.stop();
     });
   }

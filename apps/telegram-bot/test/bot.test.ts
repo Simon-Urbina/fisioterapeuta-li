@@ -46,9 +46,14 @@ function crearBotDePrueba(
     ...(coreApi ? { coreApi } : {}),
   });
   bot.api.config.use((_prev, method, payload) => {
+    const p = payload as { text?: string; caption?: string };
     if (["sendMessage", "editMessageText", "editMessageCaption", "sendPhoto"].includes(method)) {
-      const p = payload as { text?: string; caption?: string };
       enviados.push(p.text ?? p.caption ?? "");
+    }
+    // Solo los answerCallbackQuery CON texto (toasts de resultado, p. ej. la
+    // verificación de un pago); los vacíos no aportan y desordenan los índices.
+    if (method === "answerCallbackQuery" && typeof p.text === "string" && p.text.length > 0) {
+      enviados.push(p.text);
     }
     return Promise.resolve({ ok: true, result: {} } as never);
   });
@@ -178,6 +183,11 @@ function coreApiDePrueba() {
     recordatorioEnviarEmail: () => Promise.resolve({ ok: true, datos: { enviado: true } }),
     citasHoy: () => Promise.resolve({ ok: true, datos: { citas: [] } }),
     historiaResumen: () => Promise.resolve({ ok: true, datos: { tipo: "no_encontrado" } }),
+    vincularPorDocumento: () => Promise.resolve({ ok: true, datos: { tipo: "no_encontrado" } }),
+    confirmacionesTelegramPendientes: () => Promise.resolve({ ok: true, datos: { confirmaciones: [] } }),
+    marcarConfirmacionTelegram: () => Promise.resolve({ ok: true, datos: { ok: true } }),
+    avisosTelegramPendientes: () => Promise.resolve({ ok: true, datos: { avisos: [] } }),
+    marcarAvisoTelegram: () => Promise.resolve({ ok: true, datos: { ok: true } }),
   };
   return { coreApi, registrados };
 }
@@ -342,7 +352,9 @@ describe("bot (integración)", () => {
       return Promise.resolve({ tipo: "ok", datos: { citas: [] } } as ResultadoEjecucion);
     };
     const { bot, enviados } = crearBotDePrueba(nlu, n8n);
-    await bot.handleUpdate(updateTexto("¿qué tengo hoy?", 111));
+    // Sin palabra de fecha relativa en el texto: la fecha del NLU pasa tal cual
+    // (si dijera "hoy"/"el lunes", el bot la recalcula con su parser).
+    await bot.handleUpdate(updateTexto("muéstrame mi agenda", 111));
     expect(n8nLlamadoCon).toEqual({ intencion: "consultar_agenda", entidades: { fecha: "2026-09-01" } });
     expect(enviados[0]).toBe("No tiene citas programadas.");
   });
@@ -449,6 +461,103 @@ describe("bot (integración)", () => {
     expect(enviados.at(-1)).toContain("¿Qué servicio desea agendar?");
   });
 
+  it("reserva guiada: si el NLU ya trae servicio+fecha+hora, salta directo a confirmar", async () => {
+    const nlu = () =>
+      Promise.resolve({
+        ok: true,
+        intencion: {
+          intencion: "crear_sesion",
+          entidades: { servicio: "Punción seca", fecha: fechaFutura, hora: "10:00" },
+          confianza: 0.95,
+          faltantes: [],
+        },
+      } as ResultadoNlu);
+    const { bot, enviados } = crearBotDePrueba(nlu, n8nGuiado, coreApiDePrueba().coreApi);
+
+    await bot.handleUpdate(updateTexto("quiero una punción seca ese día a las 10", 500));
+    expect(enviados.at(-1)).toContain("Confirme los datos de su cita");
+    expect(enviados.at(-1)).toContain("Punción seca");
+    expect(enviados.at(-1)).toContain("10:00");
+  });
+
+  it("reserva guiada: a mitad del flujo el paciente escribe otro servicio y se cambia", async () => {
+    const { bot, enviados } = crearBotDePrueba(undefined, n8nGuiado);
+    await bot.handleUpdate(updateCallback("menu:agendar", 500));
+    await bot.handleUpdate(updateCallback("rsv:svc:1", 500)); // Punción seca
+    await bot.handleUpdate(updateTexto("mejor una valoración inicial", 500));
+    expect(enviados.at(-1)).toContain("Cambio a Valoración inicial");
+  });
+
+  it("no entiende una solicitud -> ofrece lo que sí puede hacer", async () => {
+    const nlu = () =>
+      Promise.resolve({
+        ok: true,
+        intencion: { intencion: "desconocida", entidades: {}, confianza: 0, faltantes: [] },
+      } as ResultadoNlu);
+    const { bot, enviados } = crearBotDePrueba(nlu);
+    await bot.handleUpdate(updateTexto("hazme un favor rarísimo", 500));
+    expect(enviados.at(-1)).toContain("le puedo ayudar con");
+  });
+
+  it("un chat sin vínculo pide identificarse por cédula + últimos 4 del teléfono y luego ve sus citas", async () => {
+    const futuro = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    let vinculado = false;
+    const n8n: ClienteN8nPrueba = (_c, intencion, e, c) =>
+      intencion === "consultar_agenda"
+        ? Promise.resolve({
+            tipo: "ok",
+            datos: {
+              vinculado,
+              citas: vinculado
+                ? [{ reservaId: 40, iniciaEn: futuro, servicio: "Punción seca", sede: "Sede Tunja", estado: "confirmada" }]
+                : [],
+            },
+          } as ResultadoEjecucion)
+        : n8nGuiado(_c, intencion, e, c);
+    const coreApi: import("../src/coreApiClient.js").ClienteCoreApi = {
+      ...coreApiDePrueba().coreApi,
+      vincularPorDocumento: () => {
+        vinculado = true;
+        return Promise.resolve({
+          ok: true,
+          datos: { tipo: "vinculado", paciente: { id: 5, nombreEnmascarado: "Laura G." } },
+        });
+      },
+    };
+    const { bot, enviados } = crearBotDePrueba(undefined, n8n, coreApi);
+
+    await bot.handleUpdate(updateTexto("/miscitas", 500));
+    expect(enviados.at(-1)).toContain("número de documento");
+
+    await bot.handleUpdate(updateTexto("1052400123", 500));
+    expect(enviados.at(-1)).toContain("últimos 4 dígitos");
+
+    await bot.handleUpdate(updateTexto("8891", 500));
+    expect(enviados.some((t) => t.includes("Laura G."))).toBe(true);
+    expect(enviados.at(-1)).toContain("Punción seca");
+  });
+
+  it("identificación: teléfono que no coincide no vincula y a los 2 intentos remite al consultorio", async () => {
+    const n8n: ClienteN8nPrueba = (_c, intencion, e, c) =>
+      intencion === "consultar_agenda"
+        ? Promise.resolve({ tipo: "ok", datos: { vinculado: false, citas: [] } } as ResultadoEjecucion)
+        : n8nGuiado(_c, intencion, e, c);
+    const coreApi: import("../src/coreApiClient.js").ClienteCoreApi = {
+      ...coreApiDePrueba().coreApi,
+      vincularPorDocumento: () => Promise.resolve({ ok: true, datos: { tipo: "datos_no_coinciden" } }),
+    };
+    const { bot, enviados } = crearBotDePrueba(undefined, n8n, coreApi);
+
+    await bot.handleUpdate(updateTexto("/miscitas", 500));
+    await bot.handleUpdate(updateTexto("1052400123", 500));
+    await bot.handleUpdate(updateTexto("0000", 500));
+    expect(enviados.at(-1)).toContain("no coinciden");
+
+    await bot.handleUpdate(updateTexto("1052400123", 500));
+    await bot.handleUpdate(updateTexto("0000", 500));
+    expect(enviados.at(-1)).toContain("311 398 1422");
+  });
+
   it("reserva guiada: rechaza una fecha con menos de 24 h", async () => {
     const { bot, enviados } = crearBotDePrueba(undefined, n8nGuiado);
     await bot.handleUpdate(updateCallback("menu:agendar", 500));
@@ -482,6 +591,27 @@ describe("bot (integración)", () => {
     expect(enviados[0]).toContain("Valoración inicial");
     expect(enviados[0]).toContain("primera cita");
     expect(enviados[0]).not.toContain("Punción seca");
+  });
+
+  it("reserva guiada: si ya tiene una valoración inicial agendada, no deja sacar otra", async () => {
+    const n8n: ClienteN8nPrueba = (_c, intencion, entidades, creadoPor) => {
+      if (intencion === "consultar_catalogo") {
+        return Promise.resolve({
+          tipo: "ok",
+          datos: {
+            registrado: true,
+            valoracionRealizada: false,
+            valoracionActiva: true,
+            servicios: [{ nombre: "Valoración inicial", duracionMinMinutos: 60, precio: 100000, moneda: "COP" }],
+          },
+        } as ResultadoEjecucion);
+      }
+      return n8nGuiado(_c, intencion, entidades, creadoPor);
+    };
+    const { bot, enviados } = crearBotDePrueba(undefined, n8n);
+    await bot.handleUpdate(updateCallback("menu:agendar", 500));
+    expect(enviados.at(-1)).toContain("Ya tiene su valoración inicial agendada");
+    expect(enviados.at(-1)).not.toContain("próximos horarios");
   });
 
   it("reserva guiada: primera cita pide nombre y teléfono y luego reserva", async () => {
@@ -702,11 +832,54 @@ describe("bot (integración)", () => {
     expect(enviados.some((t) => t.includes("quedó confirmada"))).toBe(true);
   });
 
+  it("verificar un pago cuyo aviso ya salió por el barrido (chatId null) no reenvía la confirmación", async () => {
+    const base = coreApiDePrueba().coreApi;
+    const coreApi: import("../src/coreApiClient.js").ClienteCoreApi = {
+      ...base,
+      verificarPago: () =>
+        Promise.resolve({
+          ok: true,
+          datos: {
+            reservasConfirmadas: [
+              { reservaId: 99, servicio: "Punción seca", iniciaEn: "2026-11-18T15:00:00.000Z", chatId: null },
+            ],
+          },
+        }),
+    };
+    const { bot, enviados } = crearBotDePrueba(undefined, n8nGuiado, coreApi);
+    await bot.handleUpdate(updateTexto("/pagos", 111));
+    await bot.handleUpdate(updateCallback("pago:ok:7", 111));
+    expect(enviados.some((t) => t.includes("verificado"))).toBe(true);
+    expect(enviados.some((t) => t.includes("quedó confirmada"))).toBe(false);
+  });
+
   it("/pagos es solo para el staff", async () => {
     const { coreApi } = coreApiDePrueba();
     const { bot, enviados } = crearBotDePrueba(undefined, n8nGuiado, coreApi);
     await bot.handleUpdate(updateTexto("/pagos", 500)); // no autorizado
     expect(enviados[0]).toContain("solo para el personal");
+  });
+
+  it("/hoy no muestra las citas canceladas/expiradas", async () => {
+    const hoyIso = new Date().toISOString();
+    const coreApi: import("../src/coreApiClient.js").ClienteCoreApi = {
+      ...coreApiDePrueba().coreApi,
+      citasHoy: () =>
+        Promise.resolve({
+          ok: true,
+          datos: {
+            citas: [
+              { reservaId: 1, pacienteId: 1, estado: "confirmada", iniciaEn: hoyIso, terminaEn: hoyIso, servicio: "Punción seca", sede: "Sede Tunja", paciente: "Ana Activa", telefono: null, canal: "telegram" },
+              { reservaId: 2, pacienteId: 2, estado: "cancelada_a_tiempo", iniciaEn: hoyIso, terminaEn: hoyIso, servicio: "Valoración inicial", sede: "Sede Tunja", paciente: "Beto Cancelado", telefono: null, canal: "telegram" },
+            ],
+          },
+        }),
+    };
+    const { bot, enviados } = crearBotDePrueba(undefined, n8nGuiado, coreApi);
+    await bot.handleUpdate(updateTexto("/hoy", 111)); // 111 = staff
+    expect(enviados.at(-1)).toContain("Ana Activa");
+    expect(enviados.at(-1)).not.toContain("Beto Cancelado");
+    expect(enviados.at(-1)).toContain("1 cita en total");
   });
 
   it("un chat administrativo no puede usar los atajos de paciente (/agendar, /miscitas, ...)", async () => {

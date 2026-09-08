@@ -88,12 +88,9 @@ export const INFO_HORARIOS = [
 export const INFO_QUIENES = [
   "Quiénes somos",
   "",
-  "La Fisioterapeuta Li es el consultorio de Lina Murillo, fisioterapeuta de la",
-  "Universidad de Boyacá, con Especialización y Maestría en Neurorrehabilitación",
-  "en formación (Universidad Autónoma de Manizales).",
+  "La Fisioterapeuta Li es el consultorio de Lina Murillo, fisioterapeuta de la Universidad de Boyacá, con Especialización y Maestría en Neurorrehabilitación en formación (Universidad Autónoma de Manizales).",
   "",
-  "Enfoque: neurorrehabilitación y rehabilitación deportiva.",
-  "Sedes en Tunja y Turmequé, Boyacá.",
+  "Enfoque: neurorrehabilitación y rehabilitación deportiva. Sedes en Tunja y Turmequé, Boyacá.",
   "",
   "Contacto directo: 311 398 1422 (teléfono y WhatsApp).",
 ].join("\n");
@@ -103,24 +100,19 @@ export const INFO_PAGO = [
   "",
   "• Para confirmar una cita se requiere el pago anticipado del 100%.",
   "• Medios de pago: Nequi / Llave 311 398 1422 (Lina Murillo), o efectivo.",
-  "• Cambios y cancelaciones: con mínimo 24 a 48 horas de anticipación. Fuera",
-  "  de ese plazo, la cita se cobra completa.",
-  "• Sus datos se usan solo para gestionar sus citas; no se comparten con",
-  "  terceros.",
+  "• Cambios y cancelaciones: con mínimo 24 a 48 horas de anticipación. Fuera de ese plazo, la cita se cobra completa.",
+  "• Sus datos se usan solo para gestionar sus citas; no se comparten con terceros.",
 ].join("\n");
 
 export const INFO_CITA = [
   "Antes de su cita",
   "",
-  "La primera cita es una valoración: se revisa su motivo de consulta, se hace",
-  "una evaluación física y se define el plan de tratamiento.",
+  "La primera cita es una valoración: se revisa su motivo de consulta, se hace una evaluación física y se define el plan de tratamiento.",
   "",
   "Qué llevar:",
-  "• Ejercicio y rehabilitación: ropa cómoda o deportiva, calzado adecuado e",
-  "  hidratación. Llegue de 5 a 10 minutos antes.",
+  "• Ejercicio y rehabilitación: ropa cómoda o deportiva, calzado adecuado e hidratación. Llegue de 5 a 10 minutos antes.",
   "• Descargas musculares: ropa cómoda que permita trabajar las distintas zonas.",
-  "• Punción seca, terapia neural, PRP y sueroterapia: ropa holgada y",
-  "  puntualidad estricta.",
+  "• Punción seca, terapia neural, PRP y sueroterapia: ropa holgada y puntualidad estricta.",
 ].join("\n");
 
 export function miId(chatId: number | undefined): string {

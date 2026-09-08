@@ -3,9 +3,10 @@ import { estadoInicial, type CitaCancelable } from "../conversation.js";
 import { fechaLarga, formatearResultado, horaCorta } from "../resultados.js";
 import type { FlujoDeps, MiContexto } from "./contexto.js";
 import { editarOResponder } from "./formato.js";
-import { citasCancelablesDeResultado, estadoDeResultado } from "./parsers.js";
+import { citasCancelablesDeResultado, estadoDeResultado, estaVinculado } from "./parsers.js";
 import { tecladoConfirmarCancelacion } from "./teclados.js";
 import { mostrarProximos } from "./flujoReserva.js";
+import { pedirIdentificacion } from "./flujoIdentidad.js";
 
 const MS_24H = 24 * 60 * 60 * 1000;
 
@@ -31,6 +32,10 @@ function textoConfirmarCancelacion(c: CitaCancelable): string {
 /** Lista las citas cancelables del paciente como botones. Entrada al flujo `cxl:*`. */
 export async function iniciarCancelarGuiado(ctx: MiContexto, deps: FlujoDeps): Promise<void> {
   const resultado = await deps.n8n(deps.cfg, "consultar_agenda", {}, String(ctx.chat?.id ?? ""));
+  if (!estaVinculado(resultado)) {
+    await pedirIdentificacion(ctx, "cancelar");
+    return;
+  }
   const citas = citasCancelablesDeResultado(resultado);
   if (citas.length === 0) {
     await ctx.reply("No tiene citas próximas para cancelar.");

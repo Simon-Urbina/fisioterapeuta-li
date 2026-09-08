@@ -56,6 +56,24 @@ describe("procesarTexto", () => {
     expect(r.accion.tipo).toBe("ejecutar");
   });
 
+  it("corrige la fecha del NLU cuando el texto trae un día de la semana (el modelo lo calcula mal)", async () => {
+    const r = await procesarTexto(
+      cfg,
+      estadoInicial(),
+      "quiero una punción seca el viernes",
+      nluFijo(ok("crear_sesion", { entidades: { servicio: "punción seca", fecha: "2099-01-01" }, faltantes: ["hora"] })),
+      false, // paciente -> flujo guiado
+    );
+    expect(r.accion.tipo).toBe("iniciar_reserva_guiada");
+    if (r.accion.tipo === "iniciar_reserva_guiada") {
+      const fecha = r.accion.entidades["fecha"];
+      expect(typeof fecha).toBe("string");
+      expect(fecha).not.toBe("2099-01-01"); // no se usó la del NLU
+      // La fecha corregida cae en viernes.
+      expect(new Date(`${String(fecha)}T12:00:00Z`).getUTCDay()).toBe(5);
+    }
+  });
+
   it("faltan datos -> pedir_dato y guardar estado", async () => {
     const r = await procesarTexto(
       cfg,
@@ -78,6 +96,7 @@ describe("procesarTexto", () => {
       reservaFlujo: null,
       esperandoComprobante: null,
       cancelarFlujo: null,
+      identidadFlujo: null,
     };
     const r = await procesarTexto(cfg, previo, "rehabilitación", nluFijo(ok("desconocida")));
     expect(r.estado.entidades["servicio"]).toBe("rehabilitación");
@@ -96,14 +115,15 @@ describe("procesarTexto", () => {
     expect(r.estado.esperandoConfirmacion).toBe(true);
   });
 
-  it("confianza baja -> no actúa, repregunta", async () => {
+  it("confianza baja -> no actúa, ofrece menú con sugerencia", async () => {
     const r = await procesarTexto(
       cfg,
       estadoInicial(),
       "mmm no sé",
       nluFijo(ok("crear_sesion", { confianza: 0.2 })),
     );
-    expect(r.accion.tipo).toBe("responder");
+    expect(r.accion.tipo).toBe("responder_con_menu");
+    if (r.accion.tipo === "responder_con_menu") expect(r.accion.sugerencia).toBe("agendar");
     expect(r.estado).toEqual(estadoInicial());
   });
 
@@ -118,9 +138,9 @@ describe("procesarTexto", () => {
     expect(textoDe(r.accion)).toContain("/help");
   });
 
-  it("intención 'desconocida' -> respuesta neutra", async () => {
+  it("intención 'desconocida' -> ofrece el menú de lo que sí puede hacer", async () => {
     const r = await procesarTexto(cfg, estadoInicial(), "hola bot", nluFijo(ok("desconocida")));
-    expect(r.accion.tipo).toBe("responder");
+    expect(r.accion.tipo).toBe("responder_con_menu");
   });
 
   it("'charla_general' responde con lo que armó el NLU, sin pasar por n8n", async () => {
@@ -165,6 +185,11 @@ describe("pareceValorDirecto", () => {
     expect(pareceValorDirecto("que servicios hay")).toBe(false);
     expect(pareceValorDirecto("mejor contame primero todo lo que tienen disponible por favor")).toBe(false);
   });
+  it("rechaza órdenes cortas con verbo de acción (no son el valor del dato)", () => {
+    expect(pareceValorDirecto("cámbiala a las 4")).toBe(false);
+    expect(pareceValorDirecto("cancela eso")).toBe(false);
+    expect(pareceValorDirecto("quiero terapia neural")).toBe(false);
+  });
 });
 
 describe("procesarTexto en medio de un flujo de datos", () => {
@@ -177,6 +202,7 @@ describe("procesarTexto en medio de un flujo de datos", () => {
       reservaFlujo: null,
       esperandoComprobante: null,
       cancelarFlujo: null,
+      identidadFlujo: null,
   });
 
   it("un valor corto llena el dato sin reinterpretar", async () => {
@@ -306,6 +332,7 @@ describe("resolverConfirmacion", () => {
       reservaFlujo: null,
       esperandoComprobante: null,
       cancelarFlujo: null,
+      identidadFlujo: null,
   };
 
   it("'si' -> ejecutar", () => {

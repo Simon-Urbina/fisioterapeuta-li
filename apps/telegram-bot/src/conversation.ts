@@ -71,6 +71,18 @@ export interface EstadoConversacion {
     citas: CitaCancelable[];
     elegida?: CitaCancelable;
   } | null;
+  /**
+   * Flujo de identificación de un chat que no llegó por el bot (p. ej. un
+   * paciente que reservó por la web): se le piden cédula y últimos 4 dígitos
+   * del teléfono para vincular el chat. Lo maneja el dispatcher; al terminar
+   * retoma lo que el paciente pidió (`volverA`).
+   */
+  identidadFlujo: {
+    paso: "documento" | "telefono";
+    documento?: string;
+    volverA: "agenda" | "cancelar" | "reserva";
+    intentos: number;
+  } | null;
 }
 
 export interface CitaCancelable {
@@ -91,6 +103,7 @@ export function estadoInicial(): EstadoConversacion {
     reservaFlujo: null,
     esperandoComprobante: null,
     cancelarFlujo: null,
+    identidadFlujo: null,
   };
 }
 
@@ -103,8 +116,18 @@ function entidadesTexto(e: Record<string, unknown>): Record<string, string | num
   return Object.fromEntries(pares);
 }
 
+/**
+ * Cuando el NLU no da para actuar (intención `desconocida` o confianza por
+ * debajo del umbral), el bot no responde con un "no entendí" seco: muestra
+ * lo que SÍ sabe hacer y, si alcanzó a intuir una intención plausible, un
+ * botón directo a esa acción. `sugerencia` la traduce el dispatcher a un
+ * botón de menú.
+ */
+export type SugerenciaAccion = "agendar" | "cancelar" | "agenda" | "catalogo";
+
 export type Accion =
   | { tipo: "responder"; texto: string }
+  | { tipo: "responder_con_menu"; texto: string; sugerencia?: SugerenciaAccion }
   | { tipo: "pedir_dato"; texto: string }
   | { tipo: "pedir_confirmacion"; texto: string; intencion: string }
   | { tipo: "ejecutar"; texto: string; intencion: string; entidades: Record<string, string | number> }
@@ -158,6 +181,7 @@ const ETIQUETA_DATO = new Map<string, string>([
   ["email", "su correo"],
   ["documento", "su número de documento (cédula)"],
   ["eps", "su EPS"],
+  ["referido", "el código de referido de quien lo invitó (o escriba «no»)"],
 ]);
 
 function resumen(intencion: string, entidades: Record<string, string | number>): string {
@@ -174,6 +198,14 @@ const PALABRAS_PREGUNTA =
   /(^|\s)(qu[eé]|cu[aá]l(es)?|cu[aá]nto?s?|c[oó]mo|d[oó]nde|cu[aá]ndo|qui[eé]n|hay|tienen|ten[eé]s|ofrecen|ofreces|puedo|pod[eé]s|podr[ií]a|sirve|explic|cu[eé]nt|cont[aá]|mostr|dec[ií]|dime)/i;
 
 /**
+ * Verbos de acción de agenda: si aparecen, el mensaje NO es "el valor del dato
+ * pendiente" sino una instrucción nueva ("mejor cámbiala a las 4", "cancela
+ * eso", "quiero terapia neural") y conviene reinterpretarlo con el NLU.
+ */
+const VERBOS_ACCION =
+  /(^|\s)(agend|reserv|cancel|an[uú]l|elimin|borr|c[aá]mbi|mov|mueve|repro|adelant|atras|p[aá]s[ae]|programa|quiero|necesito|mu[eé]str|ver\s|consult)/i;
+
+/**
  * Heurística barata para decidir, cuando estamos rellenando un dato, si el
  * mensaje es la respuesta al dato (corto y sin forma de pregunta) o es otra
  * cosa (una pregunta, un cambio de tema) que conviene reinterpretar con el NLU.
@@ -182,6 +214,7 @@ export function pareceValorDirecto(texto: string): boolean {
   const t = texto.trim();
   if (t.includes("?") || t.includes("¿")) return false;
   if (PALABRAS_PREGUNTA.test(t)) return false;
+  if (VERBOS_ACCION.test(t)) return false;
   return t.split(/\s+/).filter(Boolean).length <= 6;
 }
 
@@ -191,16 +224,47 @@ const SOLO_LECTURA = new Set(["consultar_catalogo", "consultar_agenda", "consult
 /** Confianza mínima para que una intención nueva interrumpa un flujo en curso. */
 const UMBRAL_CAMBIO_TEMA = 0.8;
 
-function armarDesdeIntencion(intn: IntencionNlu): EstadoConversacion {
+/** Fecha de hoy en Bogotá (AAAA-MM-DD). Duplicado a propósito de formato.ts: este módulo no depende de grammY. */
+function hoyBogota(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/**
+ * El modelo chico calcula MAL los días de la semana ("el viernes" → una fecha
+ * equivocada, a veces un lunes). `parsearFechaSimple` sí los resuelve bien y
+ * en la zona correcta. Si encuentra una fecha en el texto del usuario, esa
+ * manda sobre la del NLU (y sale de `faltantes`).
+ */
+function corregirFechaRelativa(
+  entidades: Record<string, string | number>,
+  faltantes: string[],
+  textoUsuario: string,
+): { entidades: Record<string, string | number>; faltantes: string[] } {
+  const fecha = parsearFechaSimple(textoUsuario, hoyBogota());
+  if (fecha === null) return { entidades, faltantes };
+  return { entidades: { ...entidades, fecha }, faltantes: faltantes.filter((f) => f !== "fecha") };
+}
+
+function armarDesdeIntencion(
+  intn: IntencionNlu,
+  entidades = entidadesTexto(intn.entidades),
+  faltantes: string[] = [...intn.faltantes],
+): EstadoConversacion {
   return {
     intencion: intn.intencion,
-    entidades: entidadesTexto(intn.entidades),
-    faltantes: [...intn.faltantes],
+    entidades,
+    faltantes,
     esperandoConfirmacion: false,
     ofertaCalendarPendiente: null,
     reservaFlujo: null,
     esperandoComprobante: null,
     cancelarFlujo: null,
+    identidadFlujo: null,
   };
 }
 
@@ -273,7 +337,7 @@ export async function procesarTexto(
     };
   }
 
-  return manejarIntencionNueva(cfg, r.intencion, autorizado);
+  return manejarIntencionNueva(cfg, r.intencion, autorizado, texto);
 }
 
 const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -351,7 +415,7 @@ async function manejarMensajeEnFlujo(
       otra.intencion !== estadoPrevio.intencion &&
       otra.confianza >= UMBRAL_CAMBIO_TEMA
     ) {
-      return manejarIntencionNueva(cfg, otra, autorizado);
+      return manejarIntencionNueva(cfg, otra, autorizado, texto);
     }
   }
 
@@ -359,15 +423,50 @@ async function manejarMensajeEnFlujo(
   return llenarFaltante(estadoPrevio, texto);
 }
 
+/** Lo que el bot sí sabe hacer — se muestra cuando no entiende una solicitud. */
+const NO_ENTENDI = [
+  "No entendí bien su solicitud. 🤔",
+  "",
+  "Por aquí le puedo ayudar con:",
+  "• Pedir una cita",
+  "• Ver, cancelar o reprogramar sus citas",
+  "• Servicios, precios y horarios disponibles",
+  "• Información del consultorio (sedes, pago, políticas)",
+  "",
+  "Dígame cuál necesita, o use el menú de abajo.",
+].join("\n");
+
+/** Traduce una intención por debajo del umbral al botón de menú más parecido. */
+const SUGERENCIA_POR_INTENCION = new Map<string, SugerenciaAccion>([
+  ["crear_sesion", "agendar"],
+  ["cancelar_sesion", "cancelar"],
+  ["modificar_sesion", "cancelar"],
+  ["consultar_agenda", "agenda"],
+  ["consultar_catalogo", "catalogo"],
+  ["consultar_disponibilidad", "catalogo"],
+]);
+
+const TEXTO_SUGERENCIA = new Map<SugerenciaAccion, string>([
+  ["agendar", "pedir una cita"],
+  ["cancelar", "cancelar o reprogramar una cita"],
+  ["agenda", "ver sus citas"],
+  ["catalogo", "ver servicios y precios"],
+]);
+
 /**
  * Rutea una intención recién interpretada por el NLU (mensaje nuevo o cambio
  * de tema): charla, allowlist admin, umbral de confianza, o arranque de flujo.
  */
-function manejarIntencionNueva(cfg: Config, intn: IntencionNlu, autorizado: boolean): Procesado {
+function manejarIntencionNueva(
+  cfg: Config,
+  intn: IntencionNlu,
+  autorizado: boolean,
+  textoUsuario = "",
+): Procesado {
   if (intn.intencion === "desconocida") {
     return {
       estado: estadoInicial(),
-      accion: { tipo: "responder", texto: "No entendí su solicitud. Escriba /help para ver qué puedo hacer." },
+      accion: { tipo: "responder_con_menu", texto: NO_ENTENDI },
     };
   }
 
@@ -397,22 +496,30 @@ function manejarIntencionNueva(cfg: Config, intn: IntencionNlu, autorizado: bool
   }
 
   if (intn.confianza < cfg.BOT_CONFIANZA_MINIMA) {
+    const sugerencia = SUGERENCIA_POR_INTENCION.get(intn.intencion);
     return {
       estado: estadoInicial(),
       accion: {
-        tipo: "responder",
-        texto: "No entendí bien. ¿Puede decirlo de otra forma? Con /help ve lo que puedo hacer.",
+        tipo: "responder_con_menu",
+        texto:
+          sugerencia !== undefined
+            ? `No estoy seguro de haberle entendido. ¿Quería ${TEXTO_SUGERENCIA.get(sugerencia) ?? ""}?\nSi no, dígamelo de otra forma o use el menú.`
+            : NO_ENTENDI,
+        ...(sugerencia !== undefined ? { sugerencia } : {}),
       },
     };
   }
 
+  const { entidades, faltantes } = corregirFechaRelativa(
+    entidadesTexto(intn.entidades),
+    [...intn.faltantes],
+    textoUsuario,
+  );
+
   // Un paciente que quiere agendar entra al flujo guiado con botones. El staff
   // (autorizado) sigue con el bucle de texto, más rápido cuando agenda por otro.
   if (intn.intencion === "crear_sesion" && !autorizado) {
-    return {
-      estado: estadoInicial(),
-      accion: { tipo: "iniciar_reserva_guiada", entidades: entidadesTexto(intn.entidades) },
-    };
+    return { estado: estadoInicial(), accion: { tipo: "iniciar_reserva_guiada", entidades } };
   }
 
   // Un paciente que quiere cancelar o reprogramar: flujo guiado (elige de SUS
@@ -425,7 +532,7 @@ function manejarIntencionNueva(cfg: Config, intn: IntencionNlu, autorizado: bool
     return { estado: estadoInicial(), accion: { tipo: "iniciar_cancelar_guiado" } };
   }
 
-  return siguientePaso(armarDesdeIntencion(intn));
+  return siguientePaso(armarDesdeIntencion(intn, entidades, faltantes));
 }
 
 /** Arranca el flujo de texto de "quiero agendar" (staff / canales sin botones). */
@@ -439,6 +546,7 @@ export function iniciarAgendamiento(): Procesado {
     reservaFlujo: null,
     esperandoComprobante: null,
     cancelarFlujo: null,
+    identidadFlujo: null,
   });
 }
 
@@ -461,6 +569,7 @@ export function pedirDatosDeRegistro(
     reservaFlujo: null,
     esperandoComprobante: null,
     cancelarFlujo: null,
+    identidadFlujo: null,
   });
 }
 

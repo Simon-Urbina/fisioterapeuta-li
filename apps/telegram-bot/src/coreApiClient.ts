@@ -141,6 +141,36 @@ const ResultadoHistoriaResumen = z.discriminatedUnion("tipo", [
 ]);
 export type ResultadoHistoriaResumen = z.infer<typeof ResultadoHistoriaResumen>;
 
+const AvisoTelegramSimple = z.object({
+  id: z.number(),
+  chatId: z.string(),
+  texto: z.string(),
+});
+export type AvisoTelegramSimple = z.infer<typeof AvisoTelegramSimple>;
+
+const ConfirmacionTgPendiente = z.object({
+  reservaId: z.number(),
+  pacienteId: z.number(),
+  paciente: z.string(),
+  servicio: z.string().nullable(),
+  sede: z.string().nullable(),
+  iniciaEn: z.string(),
+  chatId: z.string(),
+});
+export type ConfirmacionTgPendiente = z.infer<typeof ConfirmacionTgPendiente>;
+
+const ResultadoVinculo = z.discriminatedUnion("tipo", [
+  z.object({
+    tipo: z.literal("vinculado"),
+    paciente: z.object({ id: z.number(), nombreEnmascarado: z.string() }),
+  }),
+  z.object({ tipo: z.literal("no_encontrado") }),
+  z.object({ tipo: z.literal("ambiguo") }),
+  z.object({ tipo: z.literal("datos_no_coinciden") }),
+  z.object({ tipo: z.literal("bloqueado") }),
+]);
+export type ResultadoVinculo = z.infer<typeof ResultadoVinculo>;
+
 const RespuestaOk = z.object({ ok: z.literal(true), datos: z.unknown() });
 
 export type ResultadoCoreApi<T> = { ok: true; datos: T } | { ok: false; motivo: "red" | "http" | "respuesta_invalida" };
@@ -196,6 +226,29 @@ export interface ClienteCoreApi {
   ): Promise<ResultadoCoreApi<{ enviado: boolean }>>;
   citasHoy(cfg: Config): Promise<ResultadoCoreApi<{ citas: CitaHoy[] }>>;
   historiaResumen(cfg: Config, documento: string): Promise<ResultadoCoreApi<ResultadoHistoriaResumen>>;
+  /**
+   * Vincula un chat de Telegram con un paciente ya existente (p. ej. uno que
+   * reservó por la web) verificando documento + últimos 4 dígitos del
+   * teléfono. Es una operación interna (no una intención del modelo).
+   */
+  vincularPorDocumento(
+    cfg: Config,
+    p: { chatId: number; documento: string; ultimos4: string },
+  ): Promise<ResultadoCoreApi<ResultadoVinculo>>;
+  /** Avisos "cita confirmada" por Telegram pendientes (confirmadas desde el panel web). */
+  confirmacionesTelegramPendientes(
+    cfg: Config,
+  ): Promise<ResultadoCoreApi<{ confirmaciones: ConfirmacionTgPendiente[] }>>;
+  marcarConfirmacionTelegram(
+    cfg: Config,
+    p: { reservaId: number; pacienteId: number; ok: boolean; error?: string | null },
+  ): Promise<ResultadoCoreApi<{ ok: true }>>;
+  /** Avisos "simples" por Telegram con el cuerpo ya redactado (p. ej. la felicitación por referidos). */
+  avisosTelegramPendientes(cfg: Config): Promise<ResultadoCoreApi<{ avisos: AvisoTelegramSimple[] }>>;
+  marcarAvisoTelegram(
+    cfg: Config,
+    p: { id: number; ok: boolean; error?: string | null },
+  ): Promise<ResultadoCoreApi<{ ok: true }>>;
 }
 
 export const coreApi: ClienteCoreApi = {
@@ -281,5 +334,42 @@ export const coreApi: ClienteCoreApi = {
     if (!r.ok) return r;
     const d = ResultadoHistoriaResumen.safeParse(r.datos);
     return d.success ? { ok: true, datos: d.data } : { ok: false, motivo: "respuesta_invalida" };
+  },
+  async vincularPorDocumento(cfg, p) {
+    const r = await pedir(cfg, "/vinculo-telegram", {
+      chat_id: p.chatId,
+      documento: p.documento,
+      ultimos4: p.ultimos4,
+    });
+    if (!r.ok) return r;
+    const d = ResultadoVinculo.safeParse(r.datos);
+    return d.success ? { ok: true, datos: d.data } : { ok: false, motivo: "respuesta_invalida" };
+  },
+  async confirmacionesTelegramPendientes(cfg) {
+    const r = await pedir(cfg, "/confirmaciones-telegram/pendientes");
+    if (!r.ok) return r;
+    const d = z.object({ confirmaciones: z.array(ConfirmacionTgPendiente) }).safeParse(r.datos);
+    return d.success ? { ok: true, datos: d.data } : { ok: false, motivo: "respuesta_invalida" };
+  },
+  async marcarConfirmacionTelegram(cfg, p) {
+    const r = await pedir(cfg, "/confirmaciones-telegram/marcar", {
+      reserva_id: p.reservaId,
+      paciente_id: p.pacienteId,
+      ok: p.ok,
+      error: p.error ?? null,
+    });
+    if (!r.ok) return r;
+    return { ok: true, datos: { ok: true } };
+  },
+  async avisosTelegramPendientes(cfg) {
+    const r = await pedir(cfg, "/avisos-telegram/pendientes");
+    if (!r.ok) return r;
+    const d = z.object({ avisos: z.array(AvisoTelegramSimple) }).safeParse(r.datos);
+    return d.success ? { ok: true, datos: d.data } : { ok: false, motivo: "respuesta_invalida" };
+  },
+  async marcarAvisoTelegram(cfg, p) {
+    const r = await pedir(cfg, "/avisos-telegram/marcar", { id: p.id, ok: p.ok, error: p.error ?? null });
+    if (!r.ok) return r;
+    return { ok: true, datos: { ok: true } };
   },
 };

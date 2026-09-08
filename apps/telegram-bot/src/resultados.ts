@@ -35,6 +35,25 @@ interface ServicioConTarifa {
 
 const TZ_BOGOTA = "America/Bogota";
 
+/** Estado de una cita en palabras (compartido por "Mis citas" y la agenda de /hoy). */
+const ETIQUETA_ESTADO = new Map<string, string>([
+  ["propuesta", "Propuesta"],
+  ["pendiente_pago", "⏳ Pendiente de pago"],
+  ["confirmada", "✅ Confirmada"],
+  ["en_curso", "🔵 En curso"],
+  ["atendida", "✔️ Atendida"],
+  ["no_asistio", "🚫 No asistió"],
+  ["cancelada_tarde", "❌ Cancelada (tarde)"],
+  ["cancelada_a_tiempo", "❌ Cancelada"],
+  ["expirada", "⌛ Expirada"],
+  ["rechazada", "❌ Rechazada"],
+]);
+
+export function etiquetaEstado(estado: string | undefined | null): string {
+  if (estado === undefined || estado === null || estado === "") return "—";
+  return ETIQUETA_ESTADO.get(estado) ?? estado;
+}
+
 /** ISO (con o sin offset, o UTC "Z") -> "05/09 15:00" en hora de Bogotá. */
 function fechaCorta(iso: string | undefined): string {
   if (typeof iso !== "string") return "";
@@ -129,7 +148,7 @@ function formatearExito(intencion: string, datos: unknown): string {
       return listaOVacio(
         citas,
         (c) =>
-          `${fechaCorta(c.iniciaEn)} — ${c.paciente ?? "sin paciente"} · ${c.servicio ?? "sin servicio"} (${c.estado ?? "?"})`,
+          `${fechaCorta(c.iniciaEn)} — ${c.paciente ?? "sin paciente"} · ${c.servicio ?? "sin servicio"} · ${etiquetaEstado(c.estado)}`,
         "No tiene citas programadas.",
       );
     }

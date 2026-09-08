@@ -77,6 +77,17 @@ export function estaRegistrado(resultado: ResultadoEjecucion): boolean {
 }
 
 /**
+ * ¿El chat ya está vinculado a un paciente? Lo marca `consultar_agenda` para
+ * chats no-admin. Por defecto `true` (admin, canal web, o forma inesperada):
+ * solo un `vinculado: false` explícito dispara la identificación por cédula.
+ */
+export function estaVinculado(resultado: ResultadoEjecucion): boolean {
+  const d = datosObjeto(resultado);
+  if (d === null) return true;
+  return d["vinculado"] !== false;
+}
+
+/**
  * ¿El paciente ya asistió a su valoración inicial? Hasta que sea `true` el bot
  * solo ofrece la valoración inicial. Por defecto `true` (admin/web/forma
  * inesperada no tienen esta restricción).
@@ -85,6 +96,17 @@ export function valoracionRealizada(resultado: ResultadoEjecucion): boolean {
   const d = datosObjeto(resultado);
   if (d === null) return true;
   return d["valoracionRealizada"] !== false;
+}
+
+/**
+ * ¿El paciente ya tiene una valoración inicial agendada y sin atender? Si es
+ * `true` el bot no lo deja sacar otra. Por defecto `false` (solo un
+ * `valoracionActiva: true` explícito lo bloquea).
+ */
+export function valoracionYaAgendada(resultado: ResultadoEjecucion): boolean {
+  const d = datosObjeto(resultado);
+  if (d === null) return false;
+  return d["valoracionActiva"] === true;
 }
 
 export function disponibilidadDeResultado(resultado: ResultadoEjecucion): { sede: string; horas: string[] } {

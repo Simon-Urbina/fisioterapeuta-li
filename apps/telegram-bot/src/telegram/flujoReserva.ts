@@ -1,4 +1,4 @@
-import type { Bot } from "grammy";
+import { type Bot, InlineKeyboard } from "grammy";
 import {
   emparejarServicio,
   estadoInicial,
@@ -14,6 +14,7 @@ import {
   fechaMinimaReserva,
   formatearMonto,
   hoyBogota,
+  interpretarSiNo,
   LLAVE_NEQUI,
 } from "./formato.js";
 import {
@@ -25,6 +26,7 @@ import {
   serviciosDeCatalogo,
   estaRegistrado,
   valoracionRealizada,
+  valoracionYaAgendada,
 } from "./parsers.js";
 import {
   RSV_CANCELAR,
@@ -118,6 +120,53 @@ export async function mostrarProximos(
   );
 }
 
+/**
+ * Si `prefill` trae fecha (ya normalizada por el NLU) y quizá hora, consulta
+ * la disponibilidad de ese día y deja el flujo lo más avanzado posible: en
+ * "confirmar" si la hora pedida está libre, o en "hora" para que el paciente
+ * elija. Devuelve `false` si no había prefill útil o el día no tiene horarios
+ * (el llamador cae entonces a `mostrarProximos`).
+ */
+async function saltarConPrefill(
+  ctx: MiContexto,
+  deps: FlujoDeps,
+  servicio: string,
+  prefill: Record<string, string | number>,
+): Promise<boolean> {
+  const fechaRaw = typeof prefill["fecha"] === "string" ? prefill["fecha"] : "";
+  if (fechaRaw.length === 0) return false;
+  const fecha = parsearFechaSimple(fechaRaw, hoyBogota());
+  if (fecha === null || fecha < fechaMinimaReserva()) return false;
+
+  const flujo = ctx.session.reservaFlujo;
+  if (!flujo) return false;
+
+  const disp = await deps.n8n(
+    deps.cfg,
+    "consultar_disponibilidad",
+    { servicio, fecha },
+    String(ctx.chat?.id ?? ""),
+  );
+  const { sede, horas } = disponibilidadDeResultado(disp);
+  if (horas.length === 0) return false;
+
+  const horaRaw = typeof prefill["hora"] === "string" ? prefill["hora"] : "";
+  if (horaRaw.length > 0 && horas.includes(horaRaw)) {
+    ctx.session = {
+      ...ctx.session,
+      reservaFlujo: { ...flujo, paso: "confirmar", servicio, fecha, hora: horaRaw, sede },
+    };
+    await ctx.reply(resumenReserva({ servicio, fecha, hora: horaRaw, sede }), { reply_markup: TECLADO_CONFIRMAR });
+    return true;
+  }
+
+  ctx.session = { ...ctx.session, reservaFlujo: { ...flujo, paso: "hora", servicio, fecha, sede } };
+  await ctx.reply(`Horarios libres para ${servicio}\n${fechaLarga(fecha)} · ${sede}:`, {
+    reply_markup: tecladoHoras(horas),
+  });
+  return true;
+}
+
 /** Arranca el flujo guiado: carga el catálogo y muestra el menú de servicios. */
 export async function iniciarReservaGuiada(
   ctx: MiContexto,
@@ -136,6 +185,19 @@ export async function iniciarReservaGuiada(
 
   ctx.session = { ...estadoInicial(), reservaFlujo: { paso: "slot", servicios } };
 
+  // Si ya tiene una valoración inicial agendada y sin atender, no puede sacar
+  // otra: se le recuerda y se le ofrece ir a "Mis citas".
+  if (valoracionYaAgendada(catalogo)) {
+    ctx.session = estadoInicial();
+    await ctx.reply(
+      "Ya tiene su valoración inicial agendada. 📅\n" +
+        "Cuando asista a esa consulta se habilitan los demás servicios. " +
+        "Para verla, cambiarla o cancelarla, use «Mis citas».",
+      { reply_markup: new InlineKeyboard().text("📋 Mis citas", "menu:agenda") },
+    );
+    return;
+  }
+
   // Hasta que el paciente asista a su valoración inicial, solo puede agendar
   // esa consulta (sea un chat nuevo o uno que ya reservó la valoración pero
   // todavía no la hizo).
@@ -152,6 +214,10 @@ export async function iniciarReservaGuiada(
 
   const preSvc = typeof prefill["servicio"] === "string" ? emparejarServicio(servicios, prefill["servicio"]) : null;
   if (preSvc) {
+    // Si el paciente ya dijo el día (y quizá la hora) en lenguaje natural
+    // ("punción seca el viernes a las 3"), se salta directo al horario / a la
+    // confirmación en vez de volver a mostrar la lista de próximos.
+    if (await saltarConPrefill(ctx, deps, preSvc.nombre, prefill)) return;
     await mostrarProximos(ctx, deps, preSvc.nombre, `Servicio: ${etiquetaServicio(preSvc)}.\n\n`);
     return;
   }
@@ -302,15 +368,60 @@ async function reservaConfirmar(ctx: MiContexto, deps: FlujoDeps): Promise<void>
   await pedirComprobante(ctx, resultado.datos);
 }
 
-/** Texto recibido mientras el flujo guiado de reserva está activo (paso slot/fecha = fecha escrita). */
+const SALIR_RE = /^(salir|cancelar|olv[ií]d\w*|d[ée]jal\w*|ya no|nada|mejor no)\b/i;
+
+/**
+ * Texto recibido mientras el flujo guiado de reserva está activo. Además de la
+ * fecha escrita en el paso "otro día", tolera lenguaje natural a mitad del
+ * flujo: pedir salir, cambiar de servicio ("mejor terapia neural"), preguntar
+ * el catálogo o la disponibilidad de paso, y responder "sí/no" en el resumen.
+ */
 export async function reservaManejaTexto(ctx: MiContexto, deps: FlujoDeps, texto: string): Promise<void> {
   const flujo = ctx.session.reservaFlujo;
   if (!flujo) return;
+
+  if (SALIR_RE.test(texto.trim())) {
+    ctx.session = estadoInicial();
+    await ctx.reply("Listo, salí de la reserva. ¿Le ayudo en algo más?");
+    return;
+  }
+
+  // ¿Está nombrando otro servicio? Permite "mejor una terapia neural" a mitad
+  // del flujo (no en una reprogramación: ahí el servicio está fijo).
+  if (flujo.reprogramarDe === undefined && flujo.servicios.length > 0) {
+    const otro = emparejarServicio(flujo.servicios, texto);
+    if (otro && otro.nombre !== flujo.servicio) {
+      await mostrarProximos(ctx, deps, otro.nombre, `Cambio a ${etiquetaServicio(otro)}.\n\n`);
+      return;
+    }
+  }
+
   if (flujo.paso === "fecha" || flujo.paso === "slot") {
     await reservaRecibeFecha(ctx, deps, texto);
-  } else {
-    await ctx.reply("Toque una de las opciones de arriba, o escriba /cancelar.");
+    return;
   }
+
+  if (flujo.paso === "confirmar") {
+    const sn = interpretarSiNo(texto);
+    if (sn === "si") {
+      await reservaConfirmar(ctx, deps);
+      return;
+    }
+    if (sn === "no") {
+      ctx.session = estadoInicial();
+      await ctx.reply("Listo, no agendé nada. ¿Le ayudo en algo más?");
+      return;
+    }
+  }
+
+  // Pasos "servicio" / "hora" / "confirmar": una pregunta de solo lectura se
+  // responde de paso y se le recuerda que siga con los botones.
+  const r = await deps.nlu(deps.cfg, texto);
+  if (r.ok && (r.intencion.intencion === "consultar_catalogo" || r.intencion.intencion === "consultar_disponibilidad")) {
+    const res = await deps.n8n(deps.cfg, r.intencion.intencion, {}, String(ctx.chat?.id ?? ""));
+    await ctx.reply(formatearResultado(r.intencion.intencion, res));
+  }
+  await ctx.reply("Sigamos con su cita: toque una de las opciones de arriba, o escriba «salir».");
 }
 
 /** Registra los callbacks `rsv:*` del flujo guiado de reserva / reprogramación. */

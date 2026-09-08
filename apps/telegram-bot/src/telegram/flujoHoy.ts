@@ -1,6 +1,6 @@
 import type { Bot } from "grammy";
 import { esAutorizado } from "../auth.js";
-import { horaCorta } from "../resultados.js";
+import { etiquetaEstado, horaCorta } from "../resultados.js";
 import type { CitaHoy } from "../coreApiClient.js";
 import type { FlujoDeps, MiContexto } from "./contexto.js";
 
@@ -10,23 +10,12 @@ import type { FlujoDeps, MiContexto } from "./contexto.js";
  * y no debería depender de que el modelo interprete bien la pregunta.
  */
 
-const ETIQUETA_ESTADO: Record<string, string> = {
-  propuesta: "Propuesta",
-  pendiente_pago: "⏳ Pendiente de pago",
-  confirmada: "✅ Confirmada",
-  en_curso: "🔵 En curso",
-  atendida: "✔️ Atendida",
-  no_asistio: "🚫 No asistió",
-  cancelada_tarde: "❌ Cancelada (tarde)",
-  cancelada_a_tiempo: "❌ Cancelada",
-  expirada: "⌛ Expirada",
-  rechazada: "❌ Rechazada",
-};
-
 function lineaCita(c: CitaHoy): string {
-  const estado = ETIQUETA_ESTADO[c.estado] ?? c.estado;
-  return `${horaCorta(c.iniciaEn)} · ${c.paciente ?? "Sin paciente"} · ${c.servicio ?? "?"} · ${c.sede} · ${estado}`;
+  return `${horaCorta(c.iniciaEn)} · ${c.paciente ?? "Sin paciente"} · ${c.servicio ?? "?"} · ${c.sede} · ${etiquetaEstado(c.estado)}`;
 }
+
+/** Estados que NO sirven para planear el día: canceladas, expiradas, rechazadas. */
+const ESTADOS_OCULTOS_HOY = new Set(["cancelada_a_tiempo", "cancelada_tarde", "expirada", "rechazada"]);
 
 /** Reutilizable por el comando `/hoy` y el botón "📅 Agenda de hoy" del menú de personal. */
 export async function mostrarAgendaHoy(ctx: MiContexto, deps: FlujoDeps): Promise<void> {
@@ -35,11 +24,14 @@ export async function mostrarAgendaHoy(ctx: MiContexto, deps: FlujoDeps): Promis
     await ctx.reply("No pude consultar la agenda de hoy en este momento.");
     return;
   }
-  if (r.datos.citas.length === 0) {
-    await ctx.reply("No hay citas registradas para hoy.");
+  // Las canceladas/expiradas no ayudan a planear el día: fuera de la lista.
+  const citas = r.datos.citas
+    .filter((c) => !ESTADOS_OCULTOS_HOY.has(c.estado))
+    .sort((a, b) => a.iniciaEn.localeCompare(b.iniciaEn));
+  if (citas.length === 0) {
+    await ctx.reply("No hay citas activas para hoy.");
     return;
   }
-  const citas = [...r.datos.citas].sort((a, b) => a.iniciaEn.localeCompare(b.iniciaEn));
   const fecha = new Intl.DateTimeFormat("es-CO", {
     timeZone: "America/Bogota",
     weekday: "long",

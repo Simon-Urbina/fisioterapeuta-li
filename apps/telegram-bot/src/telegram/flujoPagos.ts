@@ -3,7 +3,7 @@ import { esAutorizado } from "../auth.js";
 import type { PagoPendiente } from "../coreApiClient.js";
 import { fechaLarga, horaCorta } from "../resultados.js";
 import type { FlujoDeps, MiContexto } from "./contexto.js";
-import { editarOResponder, formatearMonto } from "./formato.js";
+import { formatearMonto } from "./formato.js";
 
 /**
  * Indicaciones previas por tipo de servicio (contenido real de Lina, ver
@@ -91,19 +91,38 @@ export function registrarFlujoPagos(bot: Bot<MiContexto>, deps: FlujoDeps): void
     await mostrarPagosPendientes(ctx, deps);
   });
 
+  /** Quita del chat la tarjeta del pago ya resuelto; si no se puede borrar, al menos le saca los botones. */
+  async function desvanecerTarjeta(ctx: MiContexto): Promise<void> {
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      try {
+        await ctx.editMessageReplyMarkup();
+      } catch {
+        /* mensaje viejo o ya editado: se deja como está */
+      }
+    }
+  }
+
   bot.callbackQuery(/^pago:(ok|no):(\d+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery();
-    if (!esAutorizado(deps.cfg, ctx.chat?.id ?? 0)) return;
+    if (!esAutorizado(deps.cfg, ctx.chat?.id ?? 0)) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
     const pagoId = Number(ctx.match[2]);
     const staff = String(ctx.chat?.id ?? "");
 
     if (ctx.match[1] === "ok") {
       const r = await deps.cApi.verificarPago(deps.cfg, { pagoId, por: staff });
       if (!r.ok) {
-        await ctx.reply(`No pude verificar el pago #${pagoId} (¿ya estaba procesado?).`);
+        await ctx.answerCallbackQuery({
+          text: `No pude verificar el pago #${pagoId} (¿ya estaba procesado?).`,
+          show_alert: true,
+        });
         return;
       }
-      await editarOResponder(ctx, `Pago #${pagoId} verificado. ✓`);
+      await ctx.answerCallbackQuery({ text: `Pago #${pagoId} verificado ✓` });
+      await desvanecerTarjeta(ctx);
       for (const rc of r.datos.reservasConfirmadas) {
         if (rc.chatId !== null) {
           await bot.api.sendMessage(
@@ -124,10 +143,14 @@ export function registrarFlujoPagos(bot: Bot<MiContexto>, deps: FlujoDeps): void
 
     const r = await deps.cApi.rechazarPago(deps.cfg, { pagoId, por: staff });
     if (!r.ok) {
-      await ctx.reply(`No pude rechazar el pago #${pagoId} (¿ya estaba procesado?).`);
+      await ctx.answerCallbackQuery({
+        text: `No pude rechazar el pago #${pagoId} (¿ya estaba procesado?).`,
+        show_alert: true,
+      });
       return;
     }
-    await editarOResponder(ctx, `Pago #${pagoId} rechazado. ✗`);
+    await ctx.answerCallbackQuery({ text: `Pago #${pagoId} rechazado ✗` });
+    await desvanecerTarjeta(ctx);
     if (r.datos.chatId !== null) {
       await bot.api.sendMessage(
         r.datos.chatId,

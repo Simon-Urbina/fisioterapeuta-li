@@ -18,10 +18,11 @@ import { estadoInicial } from "../conversation.js";
 import { formatearResultado } from "../resultados.js";
 import { InlineKeyboard } from "grammy";
 import type { FlujoDeps, MiContexto } from "./contexto.js";
-import { citasCancelablesDeResultado } from "./parsers.js";
+import { citasCancelablesDeResultado, estaVinculado } from "./parsers.js";
 import { tecladoDe } from "./teclados.js";
 import { iniciarReservaGuiada } from "./flujoReserva.js";
 import { iniciarCancelarGuiado } from "./flujoCancelar.js";
+import { pedirIdentificacion } from "./flujoIdentidad.js";
 
 const INFO_TEXTOS: Record<string, string> = {
   "info:horarios": INFO_HORARIOS,
@@ -42,6 +43,26 @@ const INFO_TEXTOS: Record<string, string> = {
  * flujoConsentimiento.ts) sin duplicar la lógica de qué botones le
  * corresponden.
  */
+/**
+ * "Mis citas" del paciente. Si el chat todavía no está vinculado a un paciente
+ * (`vinculado: false` — típico de quien reservó por la web), arranca la
+ * identificación por cédula en vez de decir "no tiene citas". Reutilizable por
+ * el comando `/miscitas`, el botón del menú y el retomar de `flujoIdentidad`.
+ */
+export async function mostrarMisCitas(ctx: MiContexto, deps: FlujoDeps): Promise<void> {
+  const resultado = await deps.n8n(deps.cfg, "consultar_agenda", {}, String(ctx.chat?.id ?? ""));
+  if (!estaVinculado(resultado)) {
+    await pedirIdentificacion(ctx, "agenda");
+    return;
+  }
+  const cancelables = citasCancelablesDeResultado(resultado);
+  await ctx.reply(formatearResultado("consultar_agenda", resultado), {
+    ...(cancelables.length > 0
+      ? { reply_markup: new InlineKeyboard().text("✕ Cancelar una cita", "cxl:start") }
+      : {}),
+  });
+}
+
 export async function enviarMenuPrincipal(ctx: MiContexto, cfg: FlujoDeps["cfg"]): Promise<void> {
   ctx.session = estadoInicial();
   const nivel = nivelDeAcceso(cfg, ctx.chat?.id);
@@ -64,15 +85,7 @@ export function registrarMenu(bot: Bot<MiContexto>, deps: FlujoDeps): void {
       formatearResultado("consultar_catalogo", await n8n(cfg, "consultar_catalogo", {}, String(ctx.chat?.id ?? ""))),
     );
   };
-  const verMisCitas = async (ctx: MiContexto): Promise<void> => {
-    const resultado = await n8n(cfg, "consultar_agenda", {}, String(ctx.chat?.id ?? ""));
-    const cancelables = citasCancelablesDeResultado(resultado);
-    await ctx.reply(formatearResultado("consultar_agenda", resultado), {
-      ...(cancelables.length > 0
-        ? { reply_markup: new InlineKeyboard().text("✕ Cancelar una cita", "cxl:start") }
-        : {}),
-    });
-  };
+  const verMisCitas = (ctx: MiContexto): Promise<void> => mostrarMisCitas(ctx, deps);
   const verInfo = async (ctx: MiContexto): Promise<void> => {
     await ctx.reply("¿Sobre qué desea información?", { reply_markup: tecladoDe(INFO_ACCIONES) });
   };

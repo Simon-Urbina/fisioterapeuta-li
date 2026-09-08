@@ -6,16 +6,17 @@ import { tarjetaPago } from "./flujoPagos.js";
 type DepsVigilancia = Pick<FlujoDeps, "cfg" | "cApi">;
 
 /**
- * Vigilancia de pagos entrantes desde la web. El checkout simulado registra un
- * `comercial.pago` (estado `registrado`) sin comprobante adjunto; nadie le
- * escribe al bot, así que hay que ir a buscarlo. Cada `intervaloMs` consulta
- * los pagos por verificar y, por cada uno que no hubiéramos visto antes, le
- * manda a Lina (y demás staff) la misma tarjeta de `/pagos` con
- * `[✓ Verificar]` / `[✗ Rechazar]`.
+ * Vigilancia de pagos por verificar. El checkout web y las fotos de
+ * comprobante del bot dejan un `comercial.pago` `registrado`; cada
+ * `intervaloMs` el bot consulta los pendientes y:
+ *  - por cada pago NUEVO, le manda a Lina (y staff) la tarjeta de `/pagos`
+ *    con `[✓ Verificar]` / `[✗ Rechazar]`, y guarda el id de ese mensaje;
+ *  - por cada pago que YA notificó y ahora DESAPARECIÓ de la lista (lo
+ *    verificaron/rechazaron desde la web o desde `/pagos`), BORRA la tarjeta
+ *    que había mandado — así no queda un botón muerto en el chat.
  *
- * Al arrancar sembramos `vistos` con lo que ya está pendiente para no repetir
- * el histórico; a partir de ahí solo avisa lo nuevo. El registro de "vistos"
- * vive en memoria: si el bot se reinicia, `/pagos` sigue mostrando todo.
+ * `vistos`/`tarjetas` viven en memoria; un reinicio del bot los pierde y
+ * `/pagos` sigue mostrando lo pendiente.
  */
 export function iniciarVigilanciaPagos(
   bot: Bot<MiContexto>,
@@ -30,6 +31,9 @@ export function iniciarVigilanciaPagos(
   }
 
   const vistos = new Set<number>();
+  // pagoId -> mensajes de tarjeta enviados (para borrarlos si el pago se
+  // resuelve por otra vía).
+  const tarjetas = new Map<number, { chatId: number; messageId: number }[]>();
   let sembrado = false;
   let corriendo = false;
 
@@ -40,6 +44,18 @@ export function iniciarVigilanciaPagos(
       const r = await deps.cApi.pagosPendientes(deps.cfg);
       if (!r.ok) return;
 
+      const pendientesAhora = new Set(r.datos.pagos.map((p) => p.pagoId));
+
+      // Tarjetas de pagos que ya no están pendientes: se desvanecen.
+      for (const [pagoId, msgs] of tarjetas) {
+        if (pendientesAhora.has(pagoId)) continue;
+        for (const m of msgs) {
+          await bot.api.deleteMessage(m.chatId, m.messageId).catch(() => undefined);
+        }
+        tarjetas.delete(pagoId);
+        vistos.delete(pagoId);
+      }
+
       if (!sembrado) {
         for (const p of r.datos.pagos) vistos.add(p.pagoId);
         sembrado = true;
@@ -49,18 +65,32 @@ export function iniciarVigilanciaPagos(
       for (const p of r.datos.pagos) {
         if (vistos.has(p.pagoId)) continue;
         vistos.add(p.pagoId);
-        const { caption, teclado } = tarjetaPago(p);
-        const texto = `Nuevo pago desde la web 🌐\n${caption}`;
+        const { caption, teclado, comprobanteRef } = tarjetaPago(p);
+        // Con comprobante = lo mandó el paciente por Telegram (una foto);
+        // sin comprobante = pago desde el checkout de la web.
+        const encabezado = comprobanteRef ? "Nuevo comprobante de pago 📸" : "Nuevo pago desde la web 🌐";
+        const texto = `${encabezado}\n${caption}`;
+        const enviados: { chatId: number; messageId: number }[] = [];
         for (const chatId of staff) {
           try {
-            await bot.api.sendMessage(chatId, texto, { reply_markup: teclado });
+            const msg = comprobanteRef
+              ? await bot.api.sendPhoto(chatId, comprobanteRef, { caption: texto, reply_markup: teclado })
+              : await bot.api.sendMessage(chatId, texto, { reply_markup: teclado });
+            enviados.push({ chatId, messageId: msg.message_id });
           } catch (err) {
             logger.warn(
               { chatId, err: err instanceof Error ? err.message : "desconocido" },
-              "no pude avisar del pago web a un chat de staff",
+              "no pude avisar del pago a un chat de staff; reintento como texto",
             );
+            try {
+              const msg = await bot.api.sendMessage(chatId, texto, { reply_markup: teclado });
+              enviados.push({ chatId, messageId: msg.message_id });
+            } catch {
+              /* el chat no está disponible: se ignora, /pagos lo sigue mostrando */
+            }
           }
         }
+        if (enviados.length > 0) tarjetas.set(p.pagoId, enviados);
       }
     } catch (err) {
       logger.warn({ err: err instanceof Error ? err.message : "desconocido" }, "vigilancia de pagos: vuelta fallida");
