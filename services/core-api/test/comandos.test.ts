@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { crearDbFalsa, crearDbFalsaConError } from "./fakeDb.js";
 import { ejecutarComando } from "../src/comandos.js";
 
@@ -344,6 +344,7 @@ describe("ejecutarComando", () => {
       [], // crearPacienteConVinculo: SELECT por numero_documento -> no existe
       [{ id: 9 }], // insert personas.paciente
       [], // insert personas.vinculo_telegram
+      [], // insert integracion.outbox: drive.carpeta_paciente
       [{ existe: false }], // tieneValoracionActiva: no tiene otra valoración en pie
       [{ id: 1, nombre: "Tunja" }],
       [{ crear_reserva: 78 }],
@@ -451,12 +452,37 @@ describe("ejecutarComando", () => {
     expect(llamadas[0]?.texto).toContain("integracion.outbox");
   });
 
-  it("buscar_archivo devuelve 501 sin tocar la base: falta el adaptador de Google", async () => {
+  it("buscar_archivo sin adaptador de Google en el contexto: 503 y no toca la base", async () => {
     const { db, llamadas } = crearDbFalsa();
     const r = await ejecutarComando(db, "buscar_archivo", { consulta: "consentimiento Laura" });
     expect(r.ok).toBe(false);
-    expect(r.error).toMatchObject({ codigo: "no_implementado", status: 501 });
+    expect(r.error).toMatchObject({ codigo: "no_configurado", status: 503 });
     expect(llamadas).toHaveLength(0);
+  });
+
+  it("buscar_archivo consulta a google-adapter y devuelve los archivos", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ ok: true, datos: { archivos: [{ id: "1", nombre: "2026-09 comprobante.jpg", webViewLink: "https://drive/1" }] } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    try {
+      const { db } = crearDbFalsa();
+      const r = await ejecutarComando(
+        db,
+        "buscar_archivo",
+        { consulta: "comprobante" },
+        { googleAdapter: { url: "http://google-adapter.local:8200", internalKey: "clave-de-pruebas-0123456789" } },
+      );
+      expect(r).toMatchObject({ ok: true, datos: { archivos: [{ nombre: "2026-09 comprobante.jpg" }] } });
+      const llamada = fetchMock.mock.calls[0]?.[0];
+      expect(llamada).toBeInstanceOf(URL);
+      expect((llamada as URL).pathname).toBe("/drive/buscar");
+      expect((llamada as URL).searchParams.get("q")).toBe("comprobante");
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it("bloquear_horario resuelve la sede y crea la reserva tipo bloqueo", async () => {

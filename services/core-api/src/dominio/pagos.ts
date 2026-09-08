@@ -92,7 +92,46 @@ export async function registrarPago(
         opts.creadoPor ? `reportado por chat ${opts.creadoPor}` : null,
       ],
     );
-    return { pagoId: Number((r.rows[0] as { id: number | string }).id) };
+    const pagoId = Number((r.rows[0] as { id: number | string }).id);
+
+    // Si vino un comprobante (foto por Telegram), se archiva en Drive, en
+    // "Pacientes/<nombre>/Comprobantes/". No es crítico para el registro del
+    // pago: si algo falla queda como evento 'fallido' en el outbox.
+    if (opts.comprobanteRef) {
+      const info = await db.query<{
+        paciente_id: number | string;
+        paciente: string;
+        documento: string;
+        servicio: string | null;
+        inicia_en: string;
+      }>(
+        `SELECT rp.paciente_id, (pa.nombres || ' ' || pa.apellidos) AS paciente,
+                pa.numero_documento AS documento, s.nombre AS servicio,
+                lower(r.franja_clinica) AS inicia_en
+           FROM agenda.reserva_participante rp
+           JOIN agenda.reserva r ON r.id = rp.reserva_id
+           JOIN personas.paciente pa ON pa.id = rp.paciente_id
+           LEFT JOIN catalogo.servicio s ON s.id = r.servicio_id
+          WHERE rp.compra_id = $1
+          LIMIT 1`,
+        [opts.compraId],
+      );
+      const f = info.rows[0];
+      if (f) {
+        const fecha = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date(f.inicia_en));
+        const monto = `$${Math.round(opts.valor).toLocaleString("es-CO")}`;
+        const nombreArchivo = `${fecha} — ${(f.servicio ?? "cita").replace(/[\\/]/g, "-")} — ${monto}`;
+        await integraciones.archivarComprobante(db, {
+          pacienteId: Number(f.paciente_id),
+          pacienteNombre: `${f.paciente} — ${f.documento}`,
+          pagoId,
+          fileId: opts.comprobanteRef,
+          nombreArchivo,
+        });
+      }
+    }
+
+    return { pagoId };
   } catch (err) {
     throw normalizarErrorDb(err);
   }

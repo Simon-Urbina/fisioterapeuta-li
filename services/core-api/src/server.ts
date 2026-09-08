@@ -78,6 +78,7 @@ export function construirServidor(cfg: Config = loadConfig(), db: Db = construir
     const resultado = await ejecutarComando(db, cuerpo.data.intencion, cuerpo.data.entidades, {
       creadoPor: cuerpo.data.creado_por ?? null,
       esAdmin,
+      googleAdapter: { url: cfg.GOOGLE_ADAPTER_URL, internalKey: cfg.INTERNAL_API_KEY ?? undefined },
     });
 
     req.log.info(

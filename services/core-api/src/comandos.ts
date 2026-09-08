@@ -136,7 +136,14 @@ export async function ejecutarComando(
   // de probar. `creadoPor` es el chat_id de Telegram como string cuando el
   // canal lo tiene; en otros canales (web, pruebas) puede no serlo — por
   // eso siempre se valida con Number.isSafeInteger antes de usarlo como tal.
-  ctx: { creadoPor?: string | null; esAdmin?: boolean } = {},
+  // `googleAdapter` lo arma server.ts desde la config: buscar_archivo lo usa
+  // para consultar Drive vía services/google-adapter (core-api no habla con
+  // Google directo). Sin él, buscar_archivo responde "no configurado".
+  ctx: {
+    creadoPor?: string | null;
+    esAdmin?: boolean;
+    googleAdapter?: { url: string; internalKey?: string | undefined };
+  } = {},
 ): Promise<ResultadoComando> {
   // El paciente no elige sede: la define el día (Tunja L-V, Turmequé S-D).
   // Solo se deriva si el canal no la mandó explícita.
@@ -531,9 +538,11 @@ export async function ejecutarComando(
         return { ok: true, datos: resultado };
       }
 
-      case "buscar_archivo":
-        integraciones.buscarArchivo();
-        break; // inalcanzable: buscarArchivo() siempre lanza
+      case "buscar_archivo": {
+        const consulta = exigir(entidades.consulta, "consulta");
+        const resultado = await integraciones.buscarArchivo(ctx.googleAdapter, { consulta });
+        return { ok: true, datos: resultado };
+      }
 
       case "bloquear_horario": {
         const nombreSede = exigir(entidades.sede, "sede");
@@ -552,8 +561,9 @@ export async function ejecutarComando(
         return { ok: true, datos: resultado };
       }
     }
-    // No debería alcanzarse: el switch cubre todo IntencionEjecutable.
-    return errorComando("intencion_no_soportada", `Sin manejador para "${intencion}".`, 500);
+    // No debería alcanzarse: el switch cubre todo IntencionEjecutable (por eso
+    // `intencion` es `never` acá y no se interpola en el mensaje).
+    return errorComando("intencion_no_soportada", "No hay manejador para esa intención.", 500);
   } catch (err) {
     const errorDominio = err instanceof ErrorDominio ? err : normalizarErrorDb(err);
     return errorComando(errorDominio.codigo, errorDominio.message, errorDominio.status);

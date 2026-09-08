@@ -120,15 +120,107 @@ export async function crearCarpeta(db: Db, opts: { carpeta: string }): Promise<{
 }
 
 /**
- * GAP CONOCIDO: buscar un archivo por nombre requiere consultar Drive en
- * vivo (`integracion.google_recurso` es un espejo de sincronización, no un
- * índice de nombres de archivo) y `services/google-adapter` todavía no
- * existe. Se deja el error explícito en vez de fingir un resultado vacío.
+ * Encola la creación de la carpeta del paciente en Drive ("Pacientes/<nombre>/").
+ * Idempotente del lado del consumidor (google-adapter mira
+ * `integracion.google_recurso` antes de crear). Se llama al registrar un
+ * paciente, dentro de su misma transacción.
  */
-export function buscarArchivo(): never {
-  throw new ErrorDominio(
-    "Buscar archivos en Drive requiere el adaptador de Google, que todavía no está implementado.",
-    "no_implementado",
-    501,
-  );
+export async function crearCarpetaPaciente(
+  db: Db,
+  opts: { pacienteId: number; nombre: string },
+): Promise<void> {
+  try {
+    await db.query(
+      `INSERT INTO integracion.outbox (agregado_tipo, agregado_id, tipo_evento, destino, payload)
+       VALUES ('paciente', $1, 'drive.carpeta_paciente', 'drive', $2::jsonb)`,
+      [opts.pacienteId, JSON.stringify({ paciente_id: opts.pacienteId, nombre: opts.nombre })],
+    );
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+/**
+ * Encola el archivado del comprobante de pago (la foto que el paciente mandó
+ * por Telegram) en "Pacientes/<nombre>/Comprobantes/". google-adapter baja
+ * el archivo por su `file_id` y lo sube. Sin `TELEGRAM_BOT_TOKEN` allá, el
+ * evento queda 'fallido' — no rompe el registro del pago.
+ */
+export async function archivarComprobante(
+  db: Db,
+  opts: { pacienteId: number; pacienteNombre: string; pagoId: number; fileId: string; nombreArchivo: string },
+): Promise<void> {
+  try {
+    await db.query(
+      `INSERT INTO integracion.outbox (agregado_tipo, agregado_id, tipo_evento, destino, payload)
+       VALUES ('pago', $1, 'drive.archivar_comprobante', 'drive', $2::jsonb)`,
+      [
+        opts.pagoId,
+        JSON.stringify({
+          paciente_id: opts.pacienteId,
+          paciente_nombre: opts.pacienteNombre,
+          file_id: opts.fileId,
+          nombre_archivo: opts.nombreArchivo,
+        }),
+      ],
+    );
+  } catch (err) {
+    throw normalizarErrorDb(err);
+  }
+}
+
+export interface ArchivoDrive {
+  id: string;
+  nombre: string;
+  webViewLink: string;
+}
+
+/**
+ * Búsqueda de archivos en Drive por nombre. core-api no habla con Google
+ * directo: le pega por HTTP a `services/google-adapter` (`GET /drive/buscar`),
+ * que sí tiene las credenciales. `googleAdapter` lo arma `server.ts` desde la
+ * config; si no vino, la función no está disponible en este entorno.
+ */
+export async function buscarArchivo(
+  googleAdapter: { url: string; internalKey?: string | undefined } | undefined,
+  opts: { consulta: string },
+): Promise<{ archivos: ArchivoDrive[] }> {
+  if (!googleAdapter?.url) {
+    throw new ErrorDominio(
+      "La búsqueda de archivos en Drive necesita el adaptador de Google configurado.",
+      "no_configurado",
+      503,
+    );
+  }
+  const url = new URL("/drive/buscar", googleAdapter.url);
+  url.searchParams.set("q", opts.consulta);
+
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      headers: googleAdapter.internalKey ? { "x-internal-key": googleAdapter.internalKey } : {},
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new ErrorDominio("No se pudo consultar Drive en este momento.", "adaptador_no_responde", 502);
+  }
+  if (!resp.ok) {
+    throw new ErrorDominio("Drive no devolvió resultados.", "drive_error", 502);
+  }
+
+  const cuerpo = (await resp.json().catch(() => null)) as
+    | { ok?: boolean; datos?: { archivos?: unknown[] } }
+    | null;
+  const crudos = Array.isArray(cuerpo?.datos?.archivos) ? cuerpo.datos.archivos : [];
+  const archivos = crudos
+    .filter(
+      (a): a is { id?: unknown; nombre: string; webViewLink?: unknown } =>
+        typeof a === "object" && a !== null && typeof (a as { nombre?: unknown }).nombre === "string",
+    )
+    .map((a) => ({
+      id: typeof a.id === "string" ? a.id : "",
+      nombre: a.nombre,
+      webViewLink: typeof a.webViewLink === "string" ? a.webViewLink : "",
+    }));
+  return { archivos };
 }

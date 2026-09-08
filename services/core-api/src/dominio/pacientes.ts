@@ -1,4 +1,5 @@
 import type { Db } from "../db.js";
+import * as integraciones from "./integraciones.js";
 
 /**
  * Búsqueda de pacientes por nombre escrito a mano (con errores de
@@ -297,6 +298,14 @@ export async function crearPacienteConVinculo(
        VALUES ($1, $2, now())`,
       [opts.chatId, pacienteId],
     );
+
+    // Carpeta del paciente en Drive (organización automática). Idempotente
+    // del lado del consumidor; se encola siempre — cubre también a pacientes
+    // registrados antes de que Drive existiera.
+    await integraciones.crearCarpetaPaciente(tx, {
+      pacienteId,
+      nombre: `${nombreCompleto} — ${opts.documento.trim()}`,
+    });
 
     return { id: pacienteId, nombreCompleto, telefono, email, codigoReferido };
   });

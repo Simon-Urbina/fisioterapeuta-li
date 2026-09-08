@@ -121,8 +121,9 @@ describe("crearPacienteConVinculo", () => {
       referido: "no",
       chatId: 222,
     });
-    expect(llamadas).toHaveLength(3); // sin la consulta del código
+    expect(llamadas).toHaveLength(4); // SELECT existente, INSERT paciente, INSERT vínculo, INSERT outbox (carpeta Drive) — sin la consulta del código
     expect(llamadas[1]?.valores[6]).toBe(null);
+    expect(llamadas[3]?.texto).toContain("drive.carpeta_paciente");
   });
 
   it("documento ya existente: reutiliza el paciente, no lo vuelve a crear", async () => {
@@ -142,9 +143,10 @@ describe("crearPacienteConVinculo", () => {
       telefono: "3001234567",
       email: "laura@correo.com",
     });
-    expect(llamadas).toHaveLength(2);
+    expect(llamadas).toHaveLength(3); // SELECT existente, INSERT vínculo, INSERT outbox (carpeta Drive)
     expect(llamadas[1]?.texto).toContain("personas.vinculo_telegram");
     expect(llamadas[1]?.valores).toEqual([333, 7]);
+    expect(llamadas[2]?.texto).toContain("drive.carpeta_paciente");
   });
 
   it("nombre sin apellido: apellidos repite nombres", async () => {
