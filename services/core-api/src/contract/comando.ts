@@ -40,6 +40,7 @@ export const NOMBRES_ENTIDAD = [
   "email",
   "documento",
   "eps",
+  "referido",
 ] as const;
 
 const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -62,6 +63,7 @@ export const EntidadesSchema = z
     email: z.string().max(254).nullable().optional(),
     documento: z.string().max(20).nullable().optional(),
     eps: z.string().max(120).nullable().optional(),
+    referido: z.string().max(30).nullable().optional(),
   })
   .strict();
 

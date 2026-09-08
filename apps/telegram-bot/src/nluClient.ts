@@ -39,6 +39,9 @@ const NOMBRES_ENTIDAD = [
   "consulta",
   "telefono",
   "email",
+  "documento",
+  "eps",
+  "referido",
 ] as const;
 
 const RespuestaNlu = z

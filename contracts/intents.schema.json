@@ -58,7 +58,8 @@
         "telefono": { "type": ["string", "null"], "maxLength": 30 },
         "email": { "type": ["string", "null"], "maxLength": 254 },
         "documento": { "type": ["string", "null"], "maxLength": 20 },
-        "eps": { "type": ["string", "null"], "maxLength": 120 }
+        "eps": { "type": ["string", "null"], "maxLength": 120 },
+        "referido": { "type": ["string", "null"], "maxLength": 30, "description": "Código de referido de quien invitó al paciente (o 'no'). Solo se usa al registrar un paciente nuevo." }
       }
     },
     "confianza": {
@@ -87,7 +88,8 @@
           "telefono",
           "email",
           "documento",
-          "eps"
+          "eps",
+          "referido"
         ]
       },
       "uniqueItems": true,
