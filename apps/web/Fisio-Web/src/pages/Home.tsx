@@ -178,8 +178,8 @@ export default function Home() {
 
                 <div className="hero-cta mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
                   <ShimmerButton
-                    type="button"
-                    title="Muy pronto podrás agendar por Telegram"
+                    href={contacto.telegramUrl}
+                    title="Agendar por Telegram"
                   >
                     <TelegramIcon size={18} /> Agendar cita
                   </ShimmerButton>

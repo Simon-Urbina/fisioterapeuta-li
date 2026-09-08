@@ -96,7 +96,7 @@ export function ContactModal({
                   Contacto
                 </h2>
                 <p className="mt-0.5 text-sm text-ink-600">
-                  Agenda tu cita en línea. Pronto también por Telegram.
+                  Agenda tu cita en línea o por Telegram.
                 </p>
               </div>
               <button
@@ -120,19 +120,20 @@ export function ContactModal({
                 <ArrowRight size={18} />
               </Link>
 
-              {/* Telegram -- todavía no disponible */}
-              <div
-                aria-disabled="true"
-                className="flex items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-mist px-4 py-3.5 text-ink-600"
+              {/* Telegram: abre la conversación con el bot */}
+              <a
+                href={contacto.telegramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={onClose}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-white px-4 py-3.5 text-deep-600 shadow-sm shadow-brand-900/5 transition-colors hover:border-deep-600 hover:bg-sky-100"
               >
                 <span className="flex items-center gap-2.5">
                   <TelegramIcon size={18} />
                   <span className="font-semibold">Agendar por Telegram</span>
                 </span>
-                <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-deep-600">
-                  Próximamente
-                </span>
-              </div>
+                <ArrowRight size={18} />
+              </a>
 
               <ul className="space-y-3 pt-1 text-sm">
                 <li className="flex items-start gap-3">

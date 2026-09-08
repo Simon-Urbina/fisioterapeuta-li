@@ -436,6 +436,10 @@ export const contacto = {
   nequi: "311 398 1422 · Titular: Lina Murillo",
   horarioGeneral: perfil.horarioGeneral,
   departamento: "Boyacá, Colombia",
+  // Bot de Telegram. Para la sustentación / producción, cambiar a @usuario
+  // del bot de DEMOSTRACIÓN (aquí apunta al de desarrollo, @FisioLiiBot).
+  telegramUsuario: "FisioLiiBot",
+  telegramUrl: "https://t.me/FisioLiiBot",
 };
 
 // =====================================================================

@@ -8,6 +8,7 @@ import { Container } from "@/components/ui/container";
 import { BrandMark } from "@/components/site/brand-mark";
 import { TelegramIcon } from "@/components/site/telegram-icon";
 import { ContactModal } from "@/components/site/contact-modal";
+import { contacto } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -104,9 +105,9 @@ export function Navbar() {
 
         <div className="hidden md:block">
           <Button
-            type="button"
+            href={contacto.telegramUrl}
             size="sm"
-            title="Muy pronto podrás agendar por Telegram"
+            title="Agendar por Telegram"
           >
             <TelegramIcon size={15} /> Agendar cita
           </Button>
@@ -177,10 +178,10 @@ export function Navbar() {
                 </button>
               </motion.div>
               <Button
-                type="button"
+                href={contacto.telegramUrl}
                 size="sm"
                 className="mt-2 mb-3 w-full"
-                title="Muy pronto podrás agendar por Telegram"
+                title="Agendar por Telegram"
               >
                 <TelegramIcon size={15} /> Agendar cita
               </Button>
