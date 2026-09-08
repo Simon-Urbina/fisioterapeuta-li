@@ -181,6 +181,45 @@ describe("servidor core-api", () => {
     await app.close();
   });
 
+  it("GET /mi-codigo-referido: chat sin vínculo → vinculado:false", async () => {
+    const { db } = crearDbFalsa([[]]); // resolverPorChatId: nadie
+    const app = await levantar(db);
+    const res = await app.inject({
+      method: "GET",
+      url: "/mi-codigo-referido?chat_id=555",
+      headers: { "x-internal-key": CLAVE },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, datos: { vinculado: false } });
+    await app.close();
+  });
+
+  it("GET /mi-codigo-referido: chat vinculado → código y avance", async () => {
+    const { db } = crearDbFalsa([
+      [{ id: 7, nombre_completo: "Laura Gómez", telefono: null, email: null }], // resolverPorChatId
+      [{ codigo_referido: "LAUR0001", requeridos: 5, porcentaje: 10, efectivos: 2, ya_ganado: false }],
+    ]);
+    const app = await levantar(db);
+    const res = await app.inject({
+      method: "GET",
+      url: "/mi-codigo-referido?chat_id=555",
+      headers: { "x-internal-key": CLAVE },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      ok: true,
+      datos: { vinculado: true, codigo: "LAUR0001", efectivos: 2, requeridos: 5, porcentaje: 10, yaGanado: false },
+    });
+    await app.close();
+  });
+
+  it("GET /mi-codigo-referido sin X-Internal-Key → 401", async () => {
+    const app = await levantar();
+    const res = await app.inject({ method: "GET", url: "/mi-codigo-referido?chat_id=1" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
   it("ruta inexistente → 404 sin filtrar detalles", async () => {
     const app = await levantar();
     const res = await app.inject({ method: "GET", url: "/no-existe", headers: { "x-internal-key": CLAVE } });

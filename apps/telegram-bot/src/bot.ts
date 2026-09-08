@@ -35,6 +35,9 @@ const COMANDOS_PACIENTE = new Set([
   "servicios",
   "precios",
   "info",
+  "referido",
+  "micodigo",
+  "codigo",
 ]);
 const CALLBACKS_PACIENTE_PREFIJOS = ["menu:", "info:", "rsv:", "cxl:"];
 const AVISO_SOLO_ADMIN = "Este número es de uso administrativo. Use /hoy, /pagos o /historia <documento>.";

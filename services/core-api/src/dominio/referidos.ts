@@ -62,6 +62,65 @@ export async function otorgarDescuentoReferidosSiElegible(
   }
 }
 
+export interface ResumenReferido {
+  /** Código propio del paciente, para compartir. */
+  codigo: string;
+  /** Referidos que ya agendaron Y asistieron a una cita. */
+  efectivos: number;
+  /** Cuántos hacen falta para el descuento (parámetro del catálogo). */
+  requeridos: number;
+  /** Porcentaje del descuento (parámetro del catálogo). */
+  porcentaje: number;
+  /** Ya tiene un beneficio de referidos (disponible o redimido). */
+  yaGanado: boolean;
+}
+
+/**
+ * "¿Cuál es mi código de referido y cómo voy?" — para responderlo por el bot
+ * cuando el paciente lo pide. `efectivos` se cuenta directo (no desde
+ * `v_referidos_elegibles`, que solo lista a quien ya cumplió y no ha
+ * canjeado) para poder mostrar el avance "2 de 5".
+ */
+export async function resumenReferidoDe(db: Db, pacienteId: number): Promise<ResumenReferido | null> {
+  const r = await db.query<{
+    codigo_referido: string | null;
+    requeridos: number | string;
+    porcentaje: number | string;
+    efectivos: number | string;
+    ya_ganado: boolean;
+  }>(
+    `SELECT
+       p.codigo_referido,
+       (SELECT valor::int     FROM catalogo.parametro WHERE clave = 'referidos_para_descuento')       AS requeridos,
+       (SELECT valor::numeric FROM catalogo.parametro WHERE clave = 'porcentaje_descuento_referidos') AS porcentaje,
+       (SELECT count(DISTINCT pr.id)
+          FROM personas.paciente pr
+         WHERE pr.referido_por_paciente_id = p.id
+           AND EXISTS (
+             SELECT 1 FROM agenda.reserva_participante rp
+               JOIN agenda.reserva r ON r.id = rp.reserva_id
+              WHERE rp.paciente_id = pr.id AND r.estado = 'atendida'
+           )) AS efectivos,
+       EXISTS (
+         SELECT 1 FROM comercial.beneficio b
+          WHERE b.paciente_id = p.id AND b.tipo = 'descuento_referidos'
+       ) AS ya_ganado
+     FROM personas.paciente p
+     WHERE p.id = $1`,
+    [pacienteId],
+  );
+  const f = r.rows[0];
+  if (!f) return null;
+  if (f.codigo_referido === null) return null;
+  return {
+    codigo: f.codigo_referido,
+    efectivos: Number(f.efectivos),
+    requeridos: Number(f.requeridos) || 5,
+    porcentaje: Number(f.porcentaje) || 10,
+    yaGanado: f.ya_ganado,
+  };
+}
+
 export interface DescuentoDisponible {
   beneficioId: number;
   porcentaje: number;

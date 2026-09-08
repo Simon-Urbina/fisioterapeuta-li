@@ -14,6 +14,7 @@ import * as notificaciones from "./dominio/notificaciones.js";
 import * as admin from "./web/admin.js";
 import * as historiaResumen from "./dominio/historiaResumen.js";
 import * as pacientes from "./dominio/pacientes.js";
+import * as referidos from "./dominio/referidos.js";
 import { registrarRutasWeb } from "./web/rutas.js";
 
 /** Comparación de tiempo constante entre el header y el secreto esperado. */
@@ -200,6 +201,20 @@ export function construirServidor(cfg: Config = loadConfig(), db: Db = construir
     const q = z.object({ documento: z.string().trim().min(1).max(20) }).safeParse(req.query);
     if (!q.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
     return conDominio(reply, () => historiaResumen.resumenHistoria(db, q.data.documento));
+  });
+
+  // "¿Cuál es mi código de referido?" — lo pide el paciente por el bot (botón
+  // o comando). Resuelve la identidad por chat_id; si el chat no está
+  // vinculado a un paciente, devuelve `vinculado: false`. Guard: X-Internal-Key.
+  app.get("/mi-codigo-referido", async (req, reply) => {
+    const q = z.object({ chat_id: z.coerce.number().int() }).safeParse(req.query);
+    if (!q.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, async () => {
+      const identidad = await pacientes.resolverPorChatId(db, q.data.chat_id);
+      if (identidad.tipo !== "conocido") return { vinculado: false };
+      const resumen = await referidos.resumenReferidoDe(db, identidad.paciente.id);
+      return resumen === null ? { vinculado: true, codigo: null } : { vinculado: true, ...resumen };
+    });
   });
 
   // --- Identificación de un chat de Telegram que no llegó por el bot ---

@@ -151,6 +151,17 @@ const AvisoTelegramSimple = z.object({
 });
 export type AvisoTelegramSimple = z.infer<typeof AvisoTelegramSimple>;
 
+/** Respuesta de "¿cuál es mi código de referido?". */
+const CodigoReferido = z.object({
+  vinculado: z.boolean(),
+  codigo: z.string().nullish(),
+  efectivos: z.number().nullish(),
+  requeridos: z.number().nullish(),
+  porcentaje: z.number().nullish(),
+  yaGanado: z.boolean().nullish(),
+});
+export type CodigoReferido = z.infer<typeof CodigoReferido>;
+
 const ConfirmacionTgPendiente = z.object({
   reservaId: z.number(),
   pacienteId: z.number(),
@@ -231,6 +242,7 @@ export interface ClienteCoreApi {
   ): Promise<ResultadoCoreApi<{ enviado: boolean }>>;
   citasHoy(cfg: Config): Promise<ResultadoCoreApi<{ citas: CitaHoy[] }>>;
   historiaResumen(cfg: Config, documento: string): Promise<ResultadoCoreApi<ResultadoHistoriaResumen>>;
+  miCodigoReferido(cfg: Config, chatId: number): Promise<ResultadoCoreApi<CodigoReferido>>;
   /**
    * Vincula un chat de Telegram con un paciente ya existente (p. ej. uno que
    * reservó por la web) verificando documento + últimos 4 dígitos del
@@ -338,6 +350,12 @@ export const coreApi: ClienteCoreApi = {
     const r = await pedir(cfg, `/historia?documento=${encodeURIComponent(documento)}`);
     if (!r.ok) return r;
     const d = ResultadoHistoriaResumen.safeParse(r.datos);
+    return d.success ? { ok: true, datos: d.data } : { ok: false, motivo: "respuesta_invalida" };
+  },
+  async miCodigoReferido(cfg, chatId) {
+    const r = await pedir(cfg, `/mi-codigo-referido?chat_id=${String(chatId)}`);
+    if (!r.ok) return r;
+    const d = CodigoReferido.safeParse(r.datos);
     return d.success ? { ok: true, datos: d.data } : { ok: false, motivo: "respuesta_invalida" };
   },
   async vincularPorDocumento(cfg, p) {

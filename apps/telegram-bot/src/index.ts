@@ -67,6 +67,7 @@ function main(): void {
       { command: "agendar", description: "Pedir una cita" },
       { command: "miscitas", description: "Ver mis citas" },
       { command: "cancelarcita", description: "Cancelar una cita" },
+      { command: "referido", description: "Mi código de referido" },
       { command: "servicios", description: "Servicios y precios" },
       { command: "info", description: "Información del consultorio" },
       { command: "cancelar", description: "Cancelar lo que estemos haciendo" },

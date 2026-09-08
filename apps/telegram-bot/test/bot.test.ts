@@ -183,6 +183,11 @@ function coreApiDePrueba() {
     recordatorioEnviarEmail: () => Promise.resolve({ ok: true, datos: { enviado: true } }),
     citasHoy: () => Promise.resolve({ ok: true, datos: { citas: [] } }),
     historiaResumen: () => Promise.resolve({ ok: true, datos: { tipo: "no_encontrado" } }),
+    miCodigoReferido: () =>
+      Promise.resolve({
+        ok: true,
+        datos: { vinculado: true, codigo: "TEST0001", efectivos: 2, requeridos: 5, porcentaje: 10, yaGanado: false },
+      }),
     vincularPorDocumento: () => Promise.resolve({ ok: true, datos: { tipo: "no_encontrado" } }),
     confirmacionesTelegramPendientes: () => Promise.resolve({ ok: true, datos: { confirmaciones: [] } }),
     marcarConfirmacionTelegram: () => Promise.resolve({ ok: true, datos: { ok: true } }),
@@ -530,6 +535,37 @@ describe("bot (integración)", () => {
     await bot.handleUpdate(updateTexto("/ayuda", 111)); // staff
     expect(enviados[1]).toContain("Panel de personal");
     expect(enviados[1]).toContain("/pagos");
+  });
+
+  it("/referido devuelve el código y el mensaje del beneficio", async () => {
+    const { bot, enviados } = crearBotDePrueba(undefined, undefined, coreApiDePrueba().coreApi);
+    await bot.handleUpdate(updateTexto("/referido", 500)); // paciente
+    expect(enviados[0]).toContain("TEST0001");
+    expect(enviados[0]).toContain("5 personas");
+    expect(enviados[0]).toContain("10% de descuento");
+    expect(enviados[0]).toContain("Va 2 de 5");
+  });
+
+  it("«cuál es mi código de referido» (lenguaje natural) también funciona", async () => {
+    const { bot, enviados } = crearBotDePrueba(undefined, undefined, coreApiDePrueba().coreApi);
+    await bot.handleUpdate(updateTexto("oye, ¿cuál es mi código de referido?", 500));
+    expect(enviados[0]).toContain("TEST0001");
+  });
+
+  it("/referido sin vínculo: explica que se asigna en la primera cita", async () => {
+    const coreApi = {
+      ...coreApiDePrueba().coreApi,
+      miCodigoReferido: () => Promise.resolve({ ok: true as const, datos: { vinculado: false } }),
+    };
+    const { bot, enviados } = crearBotDePrueba(undefined, undefined, coreApi);
+    await bot.handleUpdate(updateTexto("/referido", 500));
+    expect(enviados[0]).toContain("primera cita");
+  });
+
+  it("/referido desde un chat administrativo se rechaza", async () => {
+    const { bot, enviados } = crearBotDePrueba(undefined, undefined, coreApiDePrueba().coreApi);
+    await bot.handleUpdate(updateTexto("/referido", 111)); // staff
+    expect(enviados[0]).toContain("administrativo");
   });
 
   it("un chat sin vínculo pide identificarse por cédula + últimos 4 del teléfono y luego ve sus citas", async () => {

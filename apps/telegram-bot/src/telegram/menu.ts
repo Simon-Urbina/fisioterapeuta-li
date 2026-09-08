@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { nivelDeAcceso } from "../auth.js";
+import { esAutorizado, nivelDeAcceso } from "../auth.js";
 import {
   AYUDA,
   AYUDA_ADMIN,
@@ -91,6 +91,39 @@ export function registrarMenu(bot: Bot<MiContexto>, deps: FlujoDeps): void {
     await ctx.reply("¿Sobre qué desea información?", { reply_markup: tecladoDe(INFO_ACCIONES) });
   };
 
+  const verMiCodigoReferido = async (ctx: MiContexto): Promise<void> => {
+    const r = await deps.cApi.miCodigoReferido(cfg, ctx.chat?.id ?? 0);
+    if (!r.ok) {
+      await ctx.reply("No pude consultar su código en este momento. Intente de nuevo en un rato.");
+      return;
+    }
+    const d = r.datos;
+    if (!d.vinculado || !d.codigo) {
+      await ctx.reply(
+        "Todavía no tiene un código de referido. Se le asigna cuando reserve su primera cita (la valoración inicial).",
+      );
+      return;
+    }
+    const req = d.requeridos ?? 5;
+    const pct = d.porcentaje ?? 10;
+    const pctTxt = Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
+    const avance = d.yaGanado
+      ? `Ya llegó a los ${String(req)} referidos: tiene su ${pctTxt}% de descuento para su próxima cita. 🎉`
+      : `Va ${String(d.efectivos ?? 0)} de ${String(req)}.`;
+    await ctx.reply(
+      [
+        "Su código de referido (tóquelo para copiarlo):",
+        "",
+        "`" + d.codigo + "`",
+        "",
+        `Compártalo con quien quiera. Cuando ${String(req)} personas que usted refiera agenden y asistan a su cita, gana un ${pctTxt}% de descuento en su próxima cita.`,
+        "",
+        avance,
+      ].join("\n"),
+      { parse_mode: "Markdown" },
+    );
+  };
+
   bot.command("start", async (ctx) => {
     await enviarMenuPrincipal(ctx, cfg);
   });
@@ -102,7 +135,18 @@ export function registrarMenu(bot: Bot<MiContexto>, deps: FlujoDeps): void {
     await iniciarCancelarGuiado(ctx, deps);
   });
   bot.command(["servicios", "precios"], verCatalogo);
+  bot.command(["referido", "micodigo", "codigo"], verMiCodigoReferido);
   bot.command("info", verInfo);
+
+  // También en lenguaje natural ("¿cuál es mi código de referido?"), sin
+  // depender del NLU. Un chat administrativo no es paciente: pasa de largo.
+  bot.hears(/\bc[oó]digo\b[^.\n]{0,24}\breferid/i, async (ctx, next) => {
+    if (esAutorizado(cfg, ctx.chat.id)) {
+      await next();
+      return;
+    }
+    await verMiCodigoReferido(ctx);
+  });
   bot.command(["help", "ayuda"], async (ctx) => {
     const nivel = nivelDeAcceso(cfg, ctx.chat.id);
     await ctx.reply(nivel === "autorizado" ? AYUDA_ADMIN : AYUDA);
@@ -129,6 +173,10 @@ export function registrarMenu(bot: Bot<MiContexto>, deps: FlujoDeps): void {
   bot.callbackQuery("menu:agendar", async (ctx) => {
     await ctx.answerCallbackQuery();
     await iniciarReservaGuiada(ctx, deps, {});
+  });
+  bot.callbackQuery("menu:referido", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await verMiCodigoReferido(ctx);
   });
   bot.callbackQuery("menu:info", async (ctx) => {
     await ctx.answerCallbackQuery();

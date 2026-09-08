@@ -13,6 +13,7 @@ export const MENU_ACCIONES = [
   { texto: "Servicios y precios", data: "menu:catalogo" },
   { texto: "Pedir una cita", data: "menu:agendar" },
   { texto: "Mis citas", data: "menu:agenda" },
+  { texto: "Mi código de referido", data: "menu:referido" },
   { texto: "Información", data: "menu:info" },
 ] as const;
 
@@ -60,6 +61,7 @@ export const AYUDA = [
   "• Servicios y precios",
   "• Pedir una cita",
   "• Ver, cancelar o reprogramar sus citas",
+  "• Consultar su código de referido — también con /referido",
   "• Información: horarios, sedes, pago y políticas",
   "",
   "También puede escribirme normal:",
