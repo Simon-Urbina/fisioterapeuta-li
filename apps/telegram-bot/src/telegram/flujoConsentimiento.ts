@@ -55,9 +55,28 @@ export async function pedirConsentimiento(ctx: MiContexto): Promise<void> {
   await ctx.reply(AVISO_DATOS, { reply_markup: TECLADO_CONSENTIMIENTO });
 }
 
+/**
+ * Quita el aviso de datos una vez respondido, para que no queden botones
+ * "muertos" en el chat. Igual que `desvanecerTarjeta` en flujoPagos.ts:
+ * borra el mensaje y, si Telegram no deja (mensaje viejo), al menos le quita
+ * los botones.
+ */
+async function desvanecerAviso(ctx: MiContexto): Promise<void> {
+  try {
+    await ctx.deleteMessage();
+  } catch {
+    try {
+      await ctx.editMessageReplyMarkup();
+    } catch {
+      /* mensaje viejo o ya editado: se deja como está */
+    }
+  }
+}
+
 export function registrarFlujoConsentimiento(bot: Bot<MiContexto>, deps: FlujoDeps): void {
   bot.callbackQuery("consentimiento:si", async (ctx) => {
     await ctx.answerCallbackQuery();
+    await desvanecerAviso(ctx);
     const chatId = ctx.chat?.id;
     if (chatId === undefined) return;
     consentidos.add(chatId);
@@ -66,6 +85,7 @@ export function registrarFlujoConsentimiento(bot: Bot<MiContexto>, deps: FlujoDe
 
   bot.callbackQuery("consentimiento:no", async (ctx) => {
     await ctx.answerCallbackQuery();
+    await desvanecerAviso(ctx);
     await ctx.reply(AVISO_RECHAZO);
   });
 }

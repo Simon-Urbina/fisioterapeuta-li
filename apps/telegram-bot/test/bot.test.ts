@@ -282,6 +282,18 @@ describe("consentimiento de datos", () => {
     expect(enviados[2]).toContain("Ley 1581 de 2012");
   });
 
+  it("al responder el consentimiento, el aviso se borra (no quedan botones muertos)", async () => {
+    const { bot } = crearBotDePrueba();
+    let borrados = 0;
+    bot.api.config.use((prev, method, payload, signal) => {
+      if (method === "deleteMessage") borrados += 1;
+      return prev(method, payload, signal);
+    });
+    await bot.handleUpdate(updateTexto("hola", 111225));
+    await bot.handleUpdate(updateCallback("consentimiento:si", 111225));
+    expect(borrados).toBe(1);
+  });
+
   it("un chat administrativo no ve el aviso de datos", async () => {
     const { bot, enviados } = crearBotDePrueba();
     await bot.handleUpdate(updateTexto("/ping", 111)); // staff (allowlist de pruebas)
