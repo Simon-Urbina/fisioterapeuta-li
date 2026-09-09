@@ -547,6 +547,36 @@ function manejarIntencionNueva(
     textoUsuario,
   );
 
+  // Consultas de solo lectura (catálogo, agenda, disponibilidad): NUNCA entran
+  // al bucle de "pedir_dato". core-api resuelve los huecos por su cuenta
+  // (catálogo sin nada; agenda sin fecha = próximas; disponibilidad sin fecha =
+  // próximos horarios). Sin esto, un "¿hay agenda el sábado?" que el modelo
+  // marcó con faltante "hora" terminaba pidiendo la hora por texto.
+  if (SOLO_LECTURA.has(intn.intencion)) {
+    const svc = entidades["servicio"];
+    const tieneServicio = typeof svc === "string" && svc.trim().length > 0;
+
+    // "¿hay cupo el sábado para sueroterapia?" de un PACIENTE = quiere reservar:
+    // se entra al flujo guiado con lo que ya dijo (servicio, y quizá el día).
+    if (intn.intencion === "consultar_disponibilidad" && !autorizado) {
+      return { estado: estadoInicial(), accion: { tipo: "iniciar_reserva_guiada", entidades } };
+    }
+
+    // El personal preguntando disponibilidad sin decir el servicio: se le
+    // muestra el catálogo (con precios/duración) en vez de un "falta el servicio".
+    const intencionFinal =
+      intn.intencion === "consultar_disponibilidad" && !tieneServicio ? "consultar_catalogo" : intn.intencion;
+    return {
+      estado: estadoInicial(),
+      accion: {
+        tipo: "ejecutar",
+        intencion: intencionFinal,
+        entidades: intencionFinal === intn.intencion ? entidades : {},
+        texto: resumen(intencionFinal, entidades),
+      },
+    };
+  }
+
   // Un paciente que quiere agendar entra al flujo guiado con botones.
   if (intn.intencion === "crear_sesion" && !autorizado) {
     return { estado: estadoInicial(), accion: { tipo: "iniciar_reserva_guiada", entidades } };
@@ -559,8 +589,14 @@ function manejarIntencionNueva(
   if (intn.intencion === "crear_sesion" && autorizado) {
     const cliente = entidades["cliente"];
     const tieneCliente = typeof cliente === "string" && cliente.trim().length > 0;
+    const svc = entidades["servicio"];
+    const tieneServicio = typeof svc === "string" && svc.trim().length > 0;
     const pideAgendar = RE_VERBO_AGENDAR.test(textoUsuario);
-    if (!tieneCliente && !pideAgendar) {
+    // Sin nombre de paciente, sin verbo de agendar y sin siquiera un servicio
+    // nombrado: casi seguro el modelo clasificó mal una consulta. No se arranca
+    // la reserva. Pero "una cita de sueroterapia el sábado" SÍ trae servicio y
+    // es un agendamiento legítimo aunque no diga "agéndame".
+    if (!tieneCliente && !pideAgendar && !tieneServicio) {
       return {
         estado: estadoInicial(),
         accion: { tipo: "responder_con_menu", texto: NO_ENTENDI_ADMIN },

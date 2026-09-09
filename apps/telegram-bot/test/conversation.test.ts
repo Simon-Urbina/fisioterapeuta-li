@@ -169,6 +169,56 @@ describe("procesarTexto", () => {
     expect(r.estado.faltantes[0]).toBe("cliente");
   });
 
+  it("paciente: '¿hay agenda de sueroterapia el sábado?' entra al flujo guiado, NO pide la hora por texto", async () => {
+    const r = await procesarTexto(
+      cfg,
+      estadoInicial(),
+      "cita de sueroterapia para el sábado, ¿hay agenda?",
+      nluFijo(ok("consultar_disponibilidad", { entidades: { servicio: "sueroterapia" }, confianza: 0.95, faltantes: ["hora"] })),
+      false, // paciente
+    );
+    expect(r.accion.tipo).toBe("iniciar_reserva_guiada");
+    if (r.accion.tipo === "iniciar_reserva_guiada") {
+      expect(r.accion.entidades["servicio"]).toBe("sueroterapia");
+    }
+  });
+
+  it("staff: 'consultar_disponibilidad' con faltante 'hora' se ejecuta, nunca pide la hora", async () => {
+    const r = await procesarTexto(
+      cfg,
+      estadoInicial(),
+      "¿qué horarios hay para sueroterapia el sábado?",
+      nluFijo(ok("consultar_disponibilidad", { entidades: { servicio: "sueroterapia" }, confianza: 0.95, faltantes: ["hora"] })),
+      true, // staff
+    );
+    expect(r.accion.tipo).toBe("ejecutar");
+    if (r.accion.tipo === "ejecutar") expect(r.accion.intencion).toBe("consultar_disponibilidad");
+  });
+
+  it("staff: disponibilidad sin servicio -> muestra el catálogo, no un 'falta el servicio'", async () => {
+    const r = await procesarTexto(
+      cfg,
+      estadoInicial(),
+      "¿qué horarios hay el viernes?",
+      nluFijo(ok("consultar_disponibilidad", { confianza: 0.9, faltantes: ["servicio"] })),
+      true,
+    );
+    expect(r.accion.tipo).toBe("ejecutar");
+    if (r.accion.tipo === "ejecutar") expect(r.accion.intencion).toBe("consultar_catalogo");
+  });
+
+  it("staff: 'una cita de sueroterapia el sábado' sí arranca la reserva (trae servicio) y pregunta el paciente", async () => {
+    const r = await procesarTexto(
+      cfg,
+      estadoInicial(),
+      "una cita de sueroterapia el sábado",
+      nluFijo(ok("crear_sesion", { entidades: { servicio: "sueroterapia" }, confianza: 0.9, faltantes: ["hora"] })),
+      true, // staff
+    );
+    expect(r.accion.tipo).toBe("pedir_dato");
+    expect(r.estado.faltantes[0]).toBe("cliente");
+  });
+
   it("intención 'desconocida' para staff -> menú administrativo, no el de paciente", async () => {
     const r = await procesarTexto(cfg, estadoInicial(), "algo raro", nluFijo(ok("desconocida")), true);
     expect(r.accion.tipo).toBe("responder_con_menu");

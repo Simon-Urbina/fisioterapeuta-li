@@ -62,6 +62,33 @@ function extraerJson(texto: string): unknown {
 const NOMBRES_ENTIDAD_SET = new Set<string>(NOMBRES_ENTIDAD);
 
 /**
+ * Qué entidades puede REALMENTE pedir cada intención. El modelo chico a veces
+ * mete en `faltantes` datos que la intención nunca usa —el caso más molesto es
+ * `hora` en `consultar_disponibilidad` (consultar horarios no necesita una
+ * hora) o `sede` en `crear_sesion` (el sistema la deduce del día)— y el bot,
+ * obediente, se pone a pedirlos por texto. Aquí se recorta `faltantes` a lo que
+ * la intención de verdad puede accionar; las que no aparecen (charla,
+ * consultar_catalogo/agenda, cancelar_sesion) nunca bloquean por un dato.
+ */
+const FALTANTES_UTILES: Partial<Record<Intencion["intencion"], ReadonlySet<string>>> = {
+  consultar_disponibilidad: new Set(["servicio"]),
+  crear_sesion: new Set(["servicio", "fecha", "hora"]),
+  modificar_sesion: new Set(["fecha", "hora"]),
+  buscar_cliente: new Set(["cliente"]),
+  enviar_correo: new Set(["destinatario", "asunto", "texto"]),
+  crear_carpeta: new Set(["carpeta"]),
+  buscar_archivo: new Set(["consulta"]),
+  bloquear_horario: new Set(["fecha", "hora"]),
+};
+
+/** Recorta `faltantes` a lo accionable por la intención (ver `FALTANTES_UTILES`). */
+function normalizarFaltantes(intn: Intencion): Intencion {
+  const utiles = FALTANTES_UTILES[intn.intencion];
+  const filtrados = utiles === undefined ? [] : intn.faltantes.filter((f) => utiles.has(f));
+  return filtrados.length === intn.faltantes.length ? intn : { ...intn, faltantes: filtrados };
+}
+
+/**
  * Limpieza tolerante del objeto crudo del modelo ANTES de validar:
  *  - descarta claves de entidad desconocidas;
  *  - valida CADA entidad contra su forma individual y descarta solo la que
@@ -209,7 +236,7 @@ export async function interpretar(
     ...base,
     modelo: modeloReal,
     latenciaMs,
-    intencion: validado.data,
+    intencion: normalizarFaltantes(validado.data),
     usoFallback: false,
     motivoFallback: null,
   };

@@ -119,6 +119,34 @@ describe("interpretar()", () => {
     expect(r.intencion.faltantes).toEqual(["servicio", "fecha"]);
   });
 
+  it("recorta 'faltantes' a lo que la intención puede accionar (hora fuera de consultar_disponibilidad)", async () => {
+    const chat = chatQueDevuelve(
+      JSON.stringify({
+        intencion: "consultar_disponibilidad",
+        entidades: { servicio: "sueroterapia", fecha: "2026-09-12" },
+        confianza: 0.95,
+        faltantes: ["hora"],
+      }),
+    );
+    const r = await interpretar("¿hay agenda de sueroterapia el sábado?", { ...OPTS_HOY, chat });
+    expect(r.usoFallback).toBe(false);
+    expect(r.intencion.intencion).toBe("consultar_disponibilidad");
+    expect(r.intencion.faltantes).toEqual([]);
+  });
+
+  it("recorta 'sede' de los faltantes de crear_sesion (el sistema la deduce del día)", async () => {
+    const chat = chatQueDevuelve(
+      JSON.stringify({
+        intencion: "crear_sesion",
+        entidades: { servicio: "sueroterapia", fecha: "2026-09-12", hora: "15:00" },
+        confianza: 0.95,
+        faltantes: ["sede"],
+      }),
+    );
+    const r = await interpretar("quiero sueroterapia el sábado a las 3", { ...OPTS_HOY, chat });
+    expect(r.intencion.faltantes).toEqual([]);
+  });
+
   it("mensaje vacío o solo espacios no llega al modelo", async () => {
     const chat = vi.fn();
     const r = await interpretar("   \n\t ", { ...OPTS_HOY, chat });
