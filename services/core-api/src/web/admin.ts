@@ -5,6 +5,7 @@ import * as agenda from "../dominio/agenda.js";
 import * as asistencia from "../dominio/asistencia.js";
 import * as integraciones from "../dominio/integraciones.js";
 import * as notificaciones from "../dominio/notificaciones.js";
+import { slugDeCodigo } from "./slugs.js";
 
 /**
  * Lógica del panel de Lina. La autenticación (token) se resuelve en las
@@ -142,10 +143,6 @@ export interface CategoriaCatalogoAdmin {
   servicios: ServicioCatalogoAdmin[];
 }
 
-function slugificar(codigo: string): string {
-  return codigo.toLowerCase().replace(/_/g, "-");
-}
-
 function describirDuracion(minMin: number, maxMin: number): string {
   const aHoras = (m: number) => (m % 60 === 0 ? `${m / 60} hora${m === 60 ? "" : "s"}` : `${m} min`);
   return minMin === maxMin ? aHoras(minMin) : `${aHoras(minMin)} a ${aHoras(maxMin)}`;
@@ -199,7 +196,11 @@ export async function listarCatalogoAdmin(
     if (!serv) {
       serv = {
         id: f.servicio_id,
-        slug: slugificar(f.servicio_codigo),
+        // Mismo slug que el catálogo público (web/slugs.ts): el panel lo
+        // manda de vuelta en /api/disponibilidad, que hace el camino inverso
+        // con codigoDeSlug. `slugificar` (guion bajo → guion) rompía ese
+        // viaje para códigos como DESC_ESPALDA.
+        slug: slugDeCodigo(f.servicio_codigo),
         nombre: f.servicio_nombre,
         duracion: describirDuracion(f.duracion_min_minutos, f.duracion_max_minutos),
         duracionMin: f.duracion_min_minutos,

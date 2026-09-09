@@ -3,6 +3,7 @@ import { crearDbFalsa } from "./fakeDb.js";
 import { codigoDeSlug, slugDeCodigo } from "../src/web/slugs.js";
 import { firmarToken, verificarToken } from "../src/web/token.js";
 import { listarServiciosWeb, disponibilidadWeb, crearReservaWeb } from "../src/web/publico.js";
+import { listarCatalogoAdmin } from "../src/web/admin.js";
 import { datosCheckout, simularPago, estadoPagoWeb } from "../src/web/checkout.js";
 
 describe("web/slugs", () => {
@@ -28,6 +29,33 @@ describe("web/token", () => {
     expect(verificarToken("secreto-a-1234567890", "basura")).toBeNull();
     const { token: viejo } = firmarToken("secreto-a-1234567890", "admin", -1);
     expect(verificarToken("secreto-a-1234567890", viejo)).toBeNull();
+  });
+});
+
+describe("web/admin catálogo", () => {
+  it("listarCatalogoAdmin usa el MISMO slug que el catálogo público (no rompe /api/disponibilidad)", async () => {
+    const fila = (codigo: string, nombre: string) => ({
+      categoria_id: "1",
+      categoria: "Cat",
+      categoria_orden: 1,
+      servicio_id: codigo === "PUNCION" ? 2 : 5,
+      servicio_codigo: codigo,
+      servicio_nombre: nombre,
+      descripcion: null,
+      duracion_min_minutos: 60,
+      duracion_max_minutos: 60,
+      buffer_posterior_minutos: 15,
+      tarifa_id: null,
+      tarifa_nombre: null,
+      sesiones_incluidas: null,
+      cupo_personas: null,
+      valor_total: null,
+    });
+    const { db } = crearDbFalsa([[fila("PUNCION", "Punción seca"), fila("DESC_ESPALDA", "Descarga muscular · Espalda")]]);
+    const { catalogo } = await listarCatalogoAdmin(db);
+    const slugs = catalogo.flatMap((c) => c.servicios).map((s) => s.slug);
+    expect(slugs).toContain("puncion-seca");
+    expect(slugs).toContain("descarga-espalda"); // antes daba "desc-espalda" y /api/disponibilidad respondía 404
   });
 });
 
