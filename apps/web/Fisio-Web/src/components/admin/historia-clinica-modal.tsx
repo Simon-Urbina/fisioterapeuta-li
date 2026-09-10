@@ -30,6 +30,7 @@ import {
   type SedeApi,
 } from "@/lib/api";
 import { partesDeContacto, combinarContacto } from "@/lib/utils";
+import { exportarHistoriaClinicaPDF } from "@/lib/reportes";
 const inputCls =
   "w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 focus:border-brand-800 focus:outline-none";
 const labelCls = "block text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1";
@@ -180,7 +181,14 @@ export function HistoriaClinicaModal({
           <div className="flex items-center gap-2">
             <button
               onClick={() =>
-                exportarHistoriaPdf(paciente, { antecedentes, anamnesis, vitales, dolor, evolucion, citas })
+                exportarHistoriaClinicaPDF(paciente, {
+                  antecedentes,
+                  anamnesis,
+                  vitales,
+                  dolor,
+                  evolucion,
+                  citas,
+                })
               }
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer"
             >
@@ -432,147 +440,6 @@ function TarjetaAccionConsulta({
       <span className="text-[11px] text-slate-500 leading-snug">{descripcion}</span>
     </button>
   );
-}
-
-// --- Exportar historia clínica en PDF (vista de impresión del navegador) --
-
-function exportarHistoriaPdf(
-  paciente: PacienteAdminApi,
-  datos: {
-    antecedentes: AntecedentePacienteApi[];
-    anamnesis: AnamnesisApi[];
-    vitales: SignosVitalesApi[];
-    dolor: EvaluacionDolorApi[];
-    evolucion: EvolucionApi[];
-    citas: CitaPacienteApi[];
-  },
-) {
-  const f = (iso: string | null) => fmtFecha(iso);
-  const filaAntecedentes = datos.antecedentes.length
-    ? datos.antecedentes
-        .map((a) => `<li><strong>${a.nombre}</strong>${a.detalle ? ` — ${a.detalle}` : ""}</li>`)
-        .join("")
-    : "<li>Sin antecedentes registrados.</li>";
-
-  const ultimaAnamnesis = datos.anamnesis[0];
-  const anamnesisHtml = ultimaAnamnesis
-    ? `<table>
-        <tr><th>Registrada</th><td>${f(ultimaAnamnesis.registradoEn)}</td></tr>
-        <tr><th>Motivo</th><td>${ultimaAnamnesis.motivoConsulta ?? "—"}</td></tr>
-        <tr><th>Enfermedad actual</th><td>${ultimaAnamnesis.enfermedadActual ?? "—"}</td></tr>
-        <tr><th>Causa aparente</th><td>${ultimaAnamnesis.causaAparente ?? "—"}</td></tr>
-        <tr><th>Tratamientos previos</th><td>${ultimaAnamnesis.tratamientosPrevios ?? "—"}</td></tr>
-        <tr><th>Objetivos</th><td>${ultimaAnamnesis.objetivosTerapeuticos ?? "—"}</td></tr>
-      </table>`
-    : "<p>Sin anamnesis registrada.</p>";
-
-  const vitalesHtml = datos.vitales.length
-    ? `<table>
-        <thead><tr><th>Fecha</th><th>TA</th><th>FC</th><th>FR</th><th>SpO2</th><th>IMC</th></tr></thead>
-        <tbody>${datos.vitales
-          .map(
-            (v) =>
-              `<tr><td>${f(v.tomadoEn)}</td><td>${v.sistolica ?? "—"}/${v.diastolica ?? "—"}</td><td>${
-                v.frecuenciaCardiaca ?? "—"
-              }</td><td>${v.frecuenciaRespiratoria ?? "—"}</td><td>${v.saturacionO2 ?? "—"}</td><td>${
-                v.imc ?? "—"
-              }</td></tr>`,
-          )
-          .join("")}</tbody>
-      </table>`
-    : "<p>Sin tomas registradas.</p>";
-
-  const dolorHtml = datos.dolor.length
-    ? `<table>
-        <thead><tr><th>Fecha</th><th>Intensidad</th><th>Zona</th><th>Tipo</th></tr></thead>
-        <tbody>${datos.dolor
-          .map(
-            (d) =>
-              `<tr><td>${f(d.evaluadoEn)}</td><td>${d.intensidad}/10 (${d.clasificacion})</td><td>${
-                d.zona ?? "—"
-              }</td><td>${d.tiposDolor.join(", ") || "—"}</td></tr>`,
-          )
-          .join("")}</tbody>
-      </table>`
-    : "<p>Sin evaluaciones registradas.</p>";
-
-  const evolucionHtml = datos.evolucion.length
-    ? datos.evolucion
-        .map(
-          (e) => `<div class="nota">
-            <p class="fecha">${f(e.registradoEn)}</p>
-            ${e.subjetivo ? `<p><strong>S:</strong> ${e.subjetivo}</p>` : ""}
-            ${e.objetivo ? `<p><strong>O:</strong> ${e.objetivo}</p>` : ""}
-            ${e.analisis ? `<p><strong>A:</strong> ${e.analisis}</p>` : ""}
-            ${e.plan ? `<p><strong>P:</strong> ${e.plan}</p>` : ""}
-          </div>`,
-        )
-        .join("")
-    : "<p>Sin notas de evolución.</p>";
-
-  const citasHtml = datos.citas.length
-    ? `<table>
-        <thead><tr><th>Fecha</th><th>Servicio</th><th>Sede</th><th>Estado</th></tr></thead>
-        <tbody>${datos.citas
-          .map((c) => `<tr><td>${f(c.iniciaEn)}</td><td>${c.servicio ?? "—"}</td><td>${c.sede}</td><td>${c.estado.replace(/_/g, " ")}</td></tr>`)
-          .join("")}</tbody>
-      </table>`
-    : "<p>Sin citas registradas.</p>";
-
-  const html = `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><title>Historia clínica — ${paciente.nombre}</title>
-<style>
-  body { font-family: Georgia, 'Times New Roman', serif; color: #1e293b; margin: 2.5rem; line-height: 1.5; }
-  h1 { font-size: 1.4rem; margin-bottom: 0.1rem; }
-  h2 { font-size: 1rem; margin-top: 2rem; border-bottom: 1px solid #cbd5e1; padding-bottom: 0.3rem; }
-  .subtitulo { color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.5rem; }
-  th, td { border: 1px solid #e2e8f0; padding: 0.4rem 0.6rem; text-align: left; }
-  th { background: #f8fafc; }
-  ul { margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.85rem; }
-  .nota { border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.6rem; font-size: 0.85rem; }
-  .nota .fecha { font-weight: bold; margin-bottom: 0.3rem; }
-  .barra-imprimir { position: sticky; top: 0; background: #f1f5f9; border-bottom: 1px solid #cbd5e1;
-    padding: 0.75rem 1rem; margin: -2.5rem -2.5rem 1.5rem; font-family: system-ui, sans-serif; }
-  .barra-imprimir button { font-family: inherit; font-size: 0.85rem; font-weight: 600; padding: 0.5rem 1rem;
-    border-radius: 8px; border: none; background: #015d47; color: white; cursor: pointer; }
-  .barra-imprimir button:hover { background: #014536; }
-  @media print { .barra-imprimir { display: none; } body { margin: 1.5cm; } }
-</style>
-</head><body>
-  <div class="barra-imprimir">
-    <button onclick="window.print()">Imprimir / Guardar como PDF</button>
-  </div>
-  <h1>${paciente.nombre}</h1>
-  <p class="subtitulo">
-    ${paciente.documento} · ${paciente.telefono ?? "sin teléfono"} · ${paciente.eps ?? "particular"} ·
-    Generado el ${new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", dateStyle: "long", timeStyle: "short" }).format(new Date())}
-  </p>
-
-  <h2>Antecedentes</h2>
-  <ul>${filaAntecedentes}</ul>
-
-  <h2>Anamnesis (más reciente)</h2>
-  ${anamnesisHtml}
-
-  <h2>Signos vitales</h2>
-  ${vitalesHtml}
-
-  <h2>Evaluaciones de dolor</h2>
-  ${dolorHtml}
-
-  <h2>Evolución de sesiones</h2>
-  ${evolucionHtml}
-
-  <h2>Historial de citas</h2>
-  ${citasHtml}
-</body></html>`;
-
-  const ventana = window.open("", "_blank");
-  if (!ventana) return;
-  ventana.document.write(html);
-  ventana.document.close();
-  ventana.focus();
 }
 
 // --- Datos personales -------------------------------------------------------
