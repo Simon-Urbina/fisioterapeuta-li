@@ -360,9 +360,13 @@ CREATE TABLE personas.paciente (
     eps_id              smallint REFERENCES catalogo.eps(id),
     eps_otro            text,
 
-    -- Programa de referidos: autorreferencia.
+    -- Programa de referidos: autorreferencia. codigo_referido lo llena solo
+    -- el trigger personas.generar_codigo_referido (ver más abajo) — nunca se
+    -- inserta a mano, así que cualquier vía de alta de paciente (web, bot,
+    -- panel) lo obtiene gratis sin tener que acordarse de generarlo.
     referido_por_paciente_id bigint REFERENCES personas.paciente(id),
     referido_texto_libre     text,
+    codigo_referido          text NOT NULL,
 
     -- Espejo en Google Contacts del Workspace de Lina.
     google_contact_id   text UNIQUE,
@@ -375,8 +379,25 @@ CREATE TABLE personas.paciente (
     CONSTRAINT paciente_ciudad_coherente    CHECK (NOT (ciudad_id    IS NOT NULL AND ciudad_otro    IS NOT NULL)),
     CONSTRAINT paciente_ocupacion_coherente CHECK (NOT (ocupacion_id IS NOT NULL AND ocupacion_otro IS NOT NULL)),
     CONSTRAINT paciente_eps_coherente       CHECK (NOT (eps_id       IS NOT NULL AND eps_otro       IS NOT NULL)),
-    CONSTRAINT paciente_no_se_refiere_a_si_mismo CHECK (referido_por_paciente_id IS DISTINCT FROM id)
+    CONSTRAINT paciente_no_se_refiere_a_si_mismo CHECK (referido_por_paciente_id IS DISTINCT FROM id),
+    CONSTRAINT paciente_codigo_referido_unico UNIQUE (codigo_referido)
 );
+
+-- Genera codigo_referido (4 letras del nombre + id) si no viene ya puesto.
+-- BEFORE INSERT porque el valor de identidad de NEW.id ya está resuelto en
+-- esta etapa, antes de que corran las restricciones de la fila.
+CREATE OR REPLACE FUNCTION personas.generar_codigo_referido() RETURNS trigger AS $$
+BEGIN
+  IF NEW.codigo_referido IS NULL THEN
+    NEW.codigo_referido := upper(left(regexp_replace(public.sin_tildes(NEW.nombres), '[^A-Za-z]', '', 'g') || 'REF', 4)) || lpad(NEW.id::text, 4, '0');
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER paciente_codigo_referido_trigger
+  BEFORE INSERT ON personas.paciente
+  FOR EACH ROW EXECUTE FUNCTION personas.generar_codigo_referido();
 
 CREATE INDEX paciente_nombre_trgm_idx ON personas.paciente
     USING gin ((public.sin_tildes(lower(nombres || ' ' || apellidos))) gin_trgm_ops);
@@ -438,6 +459,23 @@ CREATE INDEX vinculo_telegram_paciente_idx ON personas.vinculo_telegram (pacient
 COMMENT ON TABLE personas.vinculo_telegram IS
   'Un chat sin paciente vinculado es un desconocido: puede consultar el catálogo pero no ver ni agendar nada a nombre de otro.';
 
+-- Autorización OPCIONAL de un paciente para que su cita se agregue a su
+-- propio Google Calendar (distinta del calendario de la sede, que se
+-- sincroniza siempre vía integracion.outbox). El paciente da su
+-- consentimiento por fuera de la base (OAuth con Google); acá solo se
+-- guarda el resultado. La agrega/gestiona services/google-adapter, nunca
+-- core-api directamente (regla del README: solo google-adapter tiene
+-- credenciales OAuth).
+CREATE TABLE personas.autorizacion_calendar_paciente (
+    paciente_id   bigint PRIMARY KEY REFERENCES personas.paciente(id) ON DELETE CASCADE,
+    access_token  text NOT NULL,
+    refresh_token text NOT NULL,
+    scope         text NOT NULL,
+    expira_en     timestamptz,
+    otorgado_en   timestamptz NOT NULL DEFAULT now(),
+    revocado_en   timestamptz
+);
+
 -- Edad calculada, nunca almacenada.
 CREATE VIEW personas.v_paciente AS
 SELECT
@@ -491,7 +529,10 @@ CREATE TYPE agenda.estado_reserva AS ENUM (
     'rechazada'         -- Propuesta de IA descartada
 );
 
-CREATE TYPE agenda.canal_origen AS ENUM ('telegram','web','presencial','whatsapp','admin');
+-- 'email' no es un origen real de reserva (nadie agenda por correo), pero
+-- esta misma enumeración se reutiliza como "canal de mensaje" en
+-- integracion.notificacion/mensaje_canal/propuesta_ia, y ahí sí aplica.
+CREATE TYPE agenda.canal_origen AS ENUM ('telegram','web','presencial','whatsapp','admin','email');
 
 CREATE TABLE agenda.horario_atencion (
     id             integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -1198,6 +1239,13 @@ CREATE TABLE integracion.notificacion (
 CREATE INDEX notificacion_pendiente_idx ON integracion.notificacion (programada_para)
     WHERE estado = 'pendiente';
 
+-- Idempotencia: un mismo recordatorio no se reclama dos veces aunque el
+-- barrido del bot se solape o se repita. Incluye paciente_id porque una
+-- reserva grupal (cupo_maximo > 1) tiene un participante por fila y cada
+-- uno necesita su propio recordatorio.
+CREATE UNIQUE INDEX notificacion_reserva_paciente_plantilla_uniq ON integracion.notificacion (reserva_id, paciente_id, plantilla)
+    WHERE reserva_id IS NOT NULL AND paciente_id IS NOT NULL;
+
 -- Registro de ejecuciones de n8n, para depurar sin adivinar.
 CREATE TABLE integracion.ejecucion_n8n (
     id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -1678,6 +1726,93 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------
+-- Reprogramar (mover a otro horario) SIN cancelar ni recrear: la misma
+-- reserva cambia sus franjas. Así no quedan filas fantasma
+-- 'cancelada_a_tiempo' por cada reprogramación, se conserva el id (y con
+-- él la compra, el pago y la historia), y el trigger
+-- integracion.tg_emitir_evento_reserva emite 'reserva.reagendada' -> el
+-- evento de Google Calendar se MUEVE, no se duplica.
+-- La duración y los buffers se conservan (se calculan desde las franjas
+-- actuales y se desplazan). La restricción de exclusión sobre
+-- franja_bloqueo hace el chequeo anti-solapamiento en el UPDATE.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION agenda.reprogramar_reserva(
+    p_reserva_id   bigint,
+    p_nueva_inicia timestamptz,
+    p_por          text DEFAULT NULL
+) RETURNS agenda.estado_reserva
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = catalogo, personas, agenda, comercial, public
+AS $$
+DECLARE
+    v_r        agenda.reserva%ROWTYPE;
+    v_dur      interval;
+    v_buf_prev interval;
+    v_buf_post interval;
+BEGIN
+    SELECT * INTO v_r FROM agenda.reserva WHERE id = p_reserva_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'La reserva % no existe.', p_reserva_id USING ERRCODE = 'no_data_found';
+    END IF;
+
+    IF v_r.estado NOT IN ('pendiente_pago','confirmada','propuesta') THEN
+        RAISE EXCEPTION 'Una reserva en estado % no puede reprogramarse.', v_r.estado
+              USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF p_nueva_inicia <= now() THEN
+        RAISE EXCEPTION 'No es posible reprogramar hacia el pasado.'
+              USING ERRCODE = 'check_violation';
+    END IF;
+
+    v_dur      := upper(v_r.franja_clinica) - lower(v_r.franja_clinica);
+    v_buf_prev := lower(v_r.franja_clinica) - lower(v_r.franja_bloqueo);
+    v_buf_post := upper(v_r.franja_bloqueo) - upper(v_r.franja_clinica);
+
+    -- La cita movida debe seguir cabiendo en una franja de atención
+    -- vigente de esa sede y ese día (mismo criterio que agenda.crear_reserva).
+    IF NOT EXISTS (
+        SELECT 1
+          FROM agenda.horario_atencion h,
+               catalogo.sede sd
+         WHERE sd.id = v_r.sede_id
+           AND h.profesional_id = v_r.profesional_id
+           AND h.sede_id        = v_r.sede_id
+           AND h.dia_semana     = extract(dow FROM (p_nueva_inicia AT TIME ZONE sd.zona_horaria))::smallint
+           AND h.vigente_desde <= (p_nueva_inicia AT TIME ZONE sd.zona_horaria)::date
+           AND (h.vigente_hasta IS NULL
+                OR h.vigente_hasta >= (p_nueva_inicia AT TIME ZONE sd.zona_horaria)::date)
+           AND (p_nueva_inicia AT TIME ZONE sd.zona_horaria)::time >= h.hora_inicio
+           AND ((p_nueva_inicia + v_dur) AT TIME ZONE sd.zona_horaria)::time <= h.hora_fin
+    ) THEN
+        RAISE EXCEPTION 'El horario solicitado está fuera de la atención de esta sede.'
+              USING ERRCODE = 'check_violation';
+    END IF;
+
+    BEGIN
+        UPDATE agenda.reserva
+           SET franja_clinica = tstzrange(p_nueva_inicia, p_nueva_inicia + v_dur, '[)'),
+               franja_bloqueo = tstzrange(p_nueva_inicia - v_buf_prev,
+                                          p_nueva_inicia + v_dur + v_buf_post, '[)'),
+               -- Si aún está reteniendo el cupo, se recalcula el vencimiento
+               -- del hold contra el nuevo horario (igual que agenda.crear_reserva).
+               reserva_expira_en = CASE WHEN estado = 'pendiente_pago'
+                    THEN LEAST(now() + interval '24 hours', p_nueva_inicia - interval '24 hours')
+                    ELSE reserva_expira_en END,
+               actualizado_en = now(),
+               creado_por     = coalesce(p_por, creado_por)
+         WHERE id = p_reserva_id;
+    EXCEPTION WHEN exclusion_violation THEN
+        RAISE EXCEPTION 'El horario % ya fue tomado. Consulte nuevamente la disponibilidad.',
+              to_char(p_nueva_inicia AT TIME ZONE 'America/Bogota', 'DD/MM/YYYY HH24:MI')
+              USING ERRCODE = 'unique_violation';
+    END;
+
+    RETURN v_r.estado;
+END;
+$$;
+
+-- ---------------------------------------------------------------------
 -- Verificación del pago anticipado del 100%.
 -- ---------------------------------------------------------------------
 
@@ -1966,6 +2101,7 @@ GRANT EXECUTE ON FUNCTION
     agenda.crear_reserva(bigint, smallint, smallint, timestamptz, agenda.canal_origen, bigint, integer, smallint, text, smallint),
     agenda.inscribir_participante(bigint, bigint, bigint),
     agenda.cancelar_reserva(bigint, text, text),
+    agenda.reprogramar_reserva(bigint, timestamptz, text),
     agenda.expirar_reservas_vencidas(),
     comercial.verificar_pago(bigint, text),
     comercial.otorgar_descuento_referidos(bigint),

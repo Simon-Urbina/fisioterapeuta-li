@@ -1,0 +1,379 @@
+import { timingSafeEqual } from "node:crypto";
+import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply } from "fastify";
+import rateLimit from "@fastify/rate-limit";
+import { z } from "zod";
+import { loadConfig, type Config } from "./config.js";
+import { opcionesLog } from "./logger.js";
+import { construirDb, type Db } from "./db.js";
+import { ComandoSchema } from "./contract/comando.js";
+import { ejecutarComando } from "./comandos.js";
+import { ErrorDominio } from "./errores.js";
+import * as pagos from "./dominio/pagos.js";
+import * as asistencia from "./dominio/asistencia.js";
+import * as notificaciones from "./dominio/notificaciones.js";
+import * as admin from "./web/admin.js";
+import * as historiaResumen from "./dominio/historiaResumen.js";
+import * as pacientes from "./dominio/pacientes.js";
+import * as referidos from "./dominio/referidos.js";
+import { registrarRutasWeb } from "./web/rutas.js";
+
+/** Comparación de tiempo constante entre el header y el secreto esperado. */
+function claveValida(recibida: string | undefined, esperada: string): boolean {
+  if (typeof recibida !== "string" || recibida.length === 0) return false;
+  const a = Buffer.from(recibida);
+  const b = Buffer.from(esperada);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+/**
+ * `db` es inyectable para pruebas (una base falsa en memoria); en
+ * producción `index.ts` la deja en su valor por defecto, que abre el pool
+ * real de PostgreSQL.
+ */
+export function construirServidor(cfg: Config = loadConfig(), db: Db = construirDb(cfg)): FastifyInstance {
+  const app: FastifyInstance = Fastify({
+    logger: opcionesLog(),
+    bodyLimit: cfg.CORE_API_MAX_BODY_BYTES,
+    trustProxy: false,
+  });
+
+  app.addHook("onRequest", async (req, reply) => {
+    if (req.url === "/health" || req.url === "/") return;
+    // La API de navegador (/api/*) tiene su propia autenticación (sesión de
+    // Lina para el panel; nada para lo público). Ver web/rutas.ts.
+    if (req.url.startsWith("/api/")) return;
+    if (!cfg.INTERNAL_API_KEY) return; // solo permitido fuera de producción
+    const header = req.headers["x-internal-key"];
+    const valor = Array.isArray(header) ? header[0] : header;
+    if (!claveValida(valor, cfg.INTERNAL_API_KEY)) {
+      await reply.code(401).send({ error: "no_autorizado" });
+    }
+  });
+
+  void app.register(rateLimit, {
+    max: cfg.CORE_API_RATE_LIMIT_MAX,
+    timeWindow: cfg.CORE_API_RATE_LIMIT_WINDOW,
+  });
+
+  app.get("/health", async (_req, reply) => {
+    try {
+      await db.query("SELECT 1");
+      return { servicio: "core-api", ok: true, db: { ok: true } };
+    } catch (err) {
+      app.log.error({ err: err instanceof Error ? err.message : String(err) }, "health: base no responde");
+      return reply.code(503).send({ servicio: "core-api", ok: false, db: { ok: false } });
+    }
+  });
+
+  // Único punto de ejecución de intenciones ya interpretadas y (si eran
+  // sensibles) confirmadas. n8n llama aquí; el modelo de lenguaje nunca.
+  app.post("/comandos", async (req, reply) => {
+    const cuerpo = ComandoSchema.safeParse(req.body);
+    if (!cuerpo.success) {
+      return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    }
+
+    const chatId = Number(cuerpo.data.creado_por);
+    const esAdmin = Number.isSafeInteger(chatId) && cfg.adminChatIds.has(chatId);
+    const resultado = await ejecutarComando(db, cuerpo.data.intencion, cuerpo.data.entidades, {
+      creadoPor: cuerpo.data.creado_por ?? null,
+      esAdmin,
+      googleAdapter: { url: cfg.GOOGLE_ADAPTER_URL, internalKey: cfg.INTERNAL_API_KEY ?? undefined },
+    });
+
+    req.log.info(
+      { intencion: cuerpo.data.intencion, ok: resultado.ok, codigo_error: resultado.error?.codigo },
+      "comando ejecutado",
+    );
+
+    if (!resultado.ok) {
+      // `ok: false` explícito: n8n reenvía este cuerpo tal cual al bot, que
+      // decide qué mostrar según ese campo, no según el status HTTP.
+      return reply.code(resultado.error?.status ?? 500).send({
+        ok: false,
+        error: resultado.error?.codigo ?? "error_interno",
+        mensaje: resultado.error?.mensaje,
+        datos: resultado.datos,
+      });
+    }
+    return reply.code(200).send({ ok: true, datos: resultado.datos });
+  });
+
+  // --- Pagos anticipados de citas del bot (ver dominio/pagos.ts) ---
+  // Fuera de /comandos a propósito: no son intenciones interpretadas por el
+  // modelo, son operaciones internas (reporte de comprobante + verificación
+  // por el staff). El guard sigue siendo X-Internal-Key.
+  const RegistrarPagoBody = z.object({
+    compra_id: z.coerce.number().int().positive(),
+    valor: z.coerce.number().positive(),
+    referencia: z.string().max(200).nullish(),
+    comprobante_ref: z.string().max(300).nullish(),
+    creado_por: z.string().max(120).nullish(),
+  });
+  const PagoIdBody = z.object({
+    pago_id: z.coerce.number().int().positive(),
+    por: z.string().max(120).nullish(),
+    motivo: z.string().max(300).nullish(),
+  });
+
+  async function conDominio(reply: FastifyReply, fn: () => Promise<unknown>): Promise<unknown> {
+    try {
+      return { ok: true, datos: await fn() };
+    } catch (err) {
+      if (err instanceof ErrorDominio) {
+        return reply.code(err.status).send({ ok: false, error: err.codigo, mensaje: err.message });
+      }
+      throw err;
+    }
+  }
+
+  app.post("/pagos", async (req, reply) => {
+    const b = RegistrarPagoBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, () =>
+      pagos.registrarPago(db, {
+        compraId: b.data.compra_id,
+        valor: b.data.valor,
+        referencia: b.data.referencia ?? null,
+        comprobanteRef: b.data.comprobante_ref ?? null,
+        creadoPor: b.data.creado_por ?? null,
+      }),
+    );
+  });
+
+  app.get("/pagos/pendientes", async (_req, reply) =>
+    conDominio(reply, async () => ({ pagos: await pagos.listarPagosPendientes(db) })),
+  );
+
+  app.post("/pagos/verificar", async (req, reply) => {
+    const b = PagoIdBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, () => pagos.verificarPago(db, { pagoId: b.data.pago_id, por: b.data.por ?? null }));
+  });
+
+  app.post("/pagos/rechazar", async (req, reply) => {
+    const b = PagoIdBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, () =>
+      pagos.rechazarPago(db, { pagoId: b.data.pago_id, por: b.data.por ?? null, motivo: b.data.motivo ?? null }),
+    );
+  });
+
+  // --- Registro de asistencia por el staff (ver dominio/asistencia.ts) ---
+  // También fuera de /comandos: operación interna que "cierra" la cita.
+  const AsistenciaBody = z.object({
+    reserva_id: z.coerce.number().int().positive(),
+    asistio: z.boolean().default(true),
+    por: z.string().max(120).nullish(),
+  });
+
+  app.get("/citas/por-asistir", async (_req, reply) =>
+    conDominio(reply, async () => ({ citas: await asistencia.listarCitasPorAsistir(db) })),
+  );
+
+  app.post("/asistencia", async (req, reply) => {
+    const b = AsistenciaBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, () =>
+      asistencia.registrarAsistencia(db, {
+        reservaId: b.data.reserva_id,
+        asistio: b.data.asistio,
+        por: b.data.por ?? null,
+      }),
+    );
+  });
+
+  // --- Agenda del día y resumen de historia clínica para /hoy y /historia ---
+  // del bot (comandos directos de staff, sin pasar por NLU). X-Internal-Key.
+  app.get("/citas/hoy", async (_req, reply) =>
+    conDominio(reply, async () => {
+      const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+      const desdeIso = `${hoy}T00:00:00-05:00`;
+      const hastaDate = new Date(desdeIso);
+      hastaDate.setUTCDate(hastaDate.getUTCDate() + 1);
+      const citas = await admin.listarCitasAdmin(db, { desdeIso, hastaIso: hastaDate.toISOString() });
+      return { citas };
+    }),
+  );
+
+  app.get("/historia", async (req, reply) => {
+    const q = z.object({ documento: z.string().trim().min(1).max(20) }).safeParse(req.query);
+    if (!q.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, () => historiaResumen.resumenHistoria(db, q.data.documento));
+  });
+
+  // "¿Cuál es mi código de referido?" — lo pide el paciente por el bot (botón
+  // o comando). Resuelve la identidad por chat_id; si el chat no está
+  // vinculado a un paciente, devuelve `vinculado: false`. Guard: X-Internal-Key.
+  app.get("/mi-codigo-referido", async (req, reply) => {
+    const q = z.object({ chat_id: z.coerce.number().int() }).safeParse(req.query);
+    if (!q.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, async () => {
+      const identidad = await pacientes.resolverPorChatId(db, q.data.chat_id);
+      if (identidad.tipo !== "conocido") return { vinculado: false };
+      const resumen = await referidos.resumenReferidoDe(db, identidad.paciente.id);
+      return resumen === null ? { vinculado: true, codigo: null } : { vinculado: true, ...resumen };
+    });
+  });
+
+  // --- Identificación de un chat de Telegram que no llegó por el bot ---
+  // (paciente que reservó por la web). Fuera de /comandos: no es una intención
+  // del modelo, es una verificación de identidad. Guard: X-Internal-Key.
+  const VinculoTelegramBody = z.object({
+    chat_id: z.coerce.number().int(),
+    documento: z.string().trim().min(3).max(20),
+    ultimos4: z.string().trim().regex(/^\d{4}$/),
+  });
+
+  app.post("/vinculo-telegram", async (req, reply) => {
+    const b = VinculoTelegramBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, () =>
+      pacientes.vincularChatPorDocumento(db, {
+        chatId: b.data.chat_id,
+        documento: b.data.documento,
+        ultimos4: b.data.ultimos4,
+      }),
+    );
+  });
+
+  // --- Recordatorios de cita (ver dominio/notificaciones.ts) ---
+  // El bot barre periódicamente; el guard sigue siendo X-Internal-Key.
+  const RecordatorioResultadoBody = z.object({
+    reserva_id: z.coerce.number().int().positive(),
+    paciente_id: z.coerce.number().int().positive(),
+    ok: z.boolean(),
+    error: z.string().max(300).nullish(),
+  });
+  const RecordatorioEmailBody = z.object({
+    reserva_id: z.coerce.number().int().positive(),
+    paciente_id: z.coerce.number().int().positive(),
+  });
+
+  app.post("/recordatorios/reclamar", async (_req, reply) =>
+    conDominio(reply, async () => ({ recordatorios: await notificaciones.reclamarRecordatorios24h(db) })),
+  );
+
+  app.post("/recordatorios/marcar-enviado", async (req, reply) => {
+    const b = RecordatorioResultadoBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, async () => {
+      await notificaciones.marcarRecordatorioResultado(db, {
+        reservaId: b.data.reserva_id,
+        pacienteId: b.data.paciente_id,
+        ok: b.data.ok,
+        error: b.data.error ?? null,
+      });
+      return { ok: true };
+    });
+  });
+
+  app.post("/recordatorios/enviar-email", async (req, reply) => {
+    const b = RecordatorioEmailBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, () =>
+      notificaciones.enviarRecordatorioPorEmail(db, { reservaId: b.data.reserva_id, pacienteId: b.data.paciente_id }),
+    );
+  });
+
+  // --- Aviso "cita confirmada" por Telegram cuando se confirmó desde el panel
+  // web (que no le habla al bot). El bot barre las pendientes y las manda.
+  app.get("/confirmaciones-telegram/pendientes", async (_req, reply) =>
+    conDominio(reply, async () => ({
+      confirmaciones: await notificaciones.listarConfirmacionesTelegramPendientes(db),
+    })),
+  );
+
+  const ConfirmacionTgMarcarBody = z.object({
+    reserva_id: z.coerce.number().int().positive(),
+    paciente_id: z.coerce.number().int().positive(),
+    ok: z.boolean(),
+    error: z.string().max(300).nullish(),
+  });
+
+  app.post("/confirmaciones-telegram/marcar", async (req, reply) => {
+    const b = ConfirmacionTgMarcarBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, async () => {
+      await notificaciones.marcarConfirmacionTelegram(db, {
+        reservaId: b.data.reserva_id,
+        pacienteId: b.data.paciente_id,
+        ok: b.data.ok,
+        error: b.data.error ?? null,
+      });
+      return { ok: true };
+    });
+  });
+
+  // --- Avisos "simples" por Telegram (cuerpo ya redactado): hoy la
+  // felicitación por el descuento de referidos. El bot los barre y reenvía.
+  app.get("/avisos-telegram/pendientes", async (_req, reply) =>
+    conDominio(reply, async () => ({
+      avisos: await notificaciones.listarAvisosTelegramSimplesPendientes(db),
+    })),
+  );
+
+  const AvisoTgMarcarBody = z.object({
+    id: z.coerce.number().int().positive(),
+    ok: z.boolean(),
+    error: z.string().max(300).nullish(),
+  });
+
+  app.post("/avisos-telegram/marcar", async (req, reply) => {
+    const b = AvisoTgMarcarBody.safeParse(req.body);
+    if (!b.success) return reply.code(422).send({ ok: false, error: "cuerpo_invalido" });
+    return conDominio(reply, async () => {
+      await notificaciones.marcarAvisoTelegram(db, { id: b.data.id, ok: b.data.ok, error: b.data.error ?? null });
+      return { ok: true };
+    });
+  });
+
+  // --- Mantenimiento programado ---
+  // n8n lo dispara en un horario (Schedule Trigger): libera los cupos de
+  // reservas que nunca se pagaron. Es el mismo SELECT que corre el timer de
+  // index.ts; exponerlo como endpoint deja que n8n sea el orquestador
+  // visible de este ciclo (regla 1 del README: "n8n orquesta"). Idempotente:
+  // solo toca reservas que siguen 'pendiente_pago' y ya vencieron, así que
+  // que corran los dos a la vez no hace daño. Guard: X-Internal-Key.
+  app.post("/mantenimiento/expirar", async (_req, reply) =>
+    conDominio(reply, async () => {
+      const r = await db.query<{ expirar_reservas_vencidas: number }>(
+        "SELECT agenda.expirar_reservas_vencidas()",
+      );
+      return { liberadas: r.rows[0]?.expirar_reservas_vencidas ?? 0 };
+    }),
+  );
+
+  // Resumen de la agenda del día para Lina, por Telegram. n8n lo dispara en
+  // un horario (workflow digest-diario-lina) y solo reenvía cada `aviso`.
+  // `avisos` sale vacío si no hay CORE_API_ADMIN_CHAT_IDS configurados.
+  app.get("/mantenimiento/digest-diario", async (_req, reply) =>
+    conDominio(reply, async () => {
+      const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+      const desdeIso = `${hoy}T00:00:00-05:00`;
+      const hasta = new Date(desdeIso);
+      hasta.setUTCDate(hasta.getUTCDate() + 1);
+      const citas = await admin.listarCitasAdmin(db, { desdeIso, hastaIso: hasta.toISOString() });
+      const mensajeTelegram = notificaciones.componerDigestDiario(`${hoy}T12:00:00-05:00`, citas);
+      const avisos = [...cfg.adminChatIds].map((chatId) => ({ chatId: String(chatId), mensajeTelegram }));
+      return { fecha: hoy, avisos };
+    }),
+  );
+
+  // API de navegador (apps/web). Rutas /api/* con su propia auth.
+  registrarRutasWeb(app, db, cfg);
+
+  app.setErrorHandler((err: FastifyError, req, reply) => {
+    req.log.error({ err: err.message, code: err.code }, "error no controlado");
+    const status =
+      typeof err.statusCode === "number" && err.statusCode >= 400 ? err.statusCode : 500;
+    void reply.code(status).send({ error: status === 500 ? "error_interno" : "solicitud_invalida" });
+  });
+
+  app.setNotFoundHandler((_req, reply) => {
+    void reply.code(404).send({ error: "no_encontrado" });
+  });
+
+  return app;
+}

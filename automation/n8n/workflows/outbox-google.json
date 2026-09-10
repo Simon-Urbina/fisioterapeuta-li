@@ -1,0 +1,44 @@
+{
+  "id": "fisioOutboxGoog1",
+  "name": "outbox-google",
+  "active": true,
+  "settings": { "executionOrder": "v1", "timezone": "America/Bogota" },
+  "nodes": [
+    {
+      "id": "cron",
+      "name": "Cada 15 segundos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": { "interval": [{ "field": "seconds", "secondsInterval": 15 }] }
+      }
+    },
+    {
+      "id": "procesar",
+      "name": "google-adapter /outbox/procesar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8200/outbox/procesar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "X-Internal-Key", "value": "dev-fisio-li-clave-local-2026" }]
+        },
+        "options": {
+          "response": { "response": { "neverError": true, "responseFormat": "json" } }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cada 15 segundos": {
+      "main": [[{ "node": "google-adapter /outbox/procesar", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": null,
+  "tags": []
+}

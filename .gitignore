@@ -14,3 +14,29 @@ tests/evidencias/*
 !tests/evidencias/.gitkeep
 docs/entregables/~$*
 .DS_Store
+
+# ---------- nlu + telegram-bot (José) ----------
+# Cualquier .env aunque tenga sufijo (.env.dev, .env.demo, .env.test)
+.env.*
+!.env.example
+# Nunca subir un .env de ejemplo con valores reales
+*.local
+
+# Artefactos de build y test
+apps/telegram-bot/dist/
+services/nlu/dist/
+coverage/
+*.tsbuildinfo
+.vitest/
+
+# Logs (pueden contener texto de pacientes)
+*.log
+logs/
+
+# Volcados y credenciales sueltas que a veces quedan en la carpeta
+*.pem
+*.key
+*.p12
+*-service-account*.json
+gha-creds-*.json
+secrets/

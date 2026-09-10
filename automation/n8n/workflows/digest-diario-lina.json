@@ -1,0 +1,65 @@
+{
+  "id": "fisioDigestLina1",
+  "name": "digest-diario-lina",
+  "active": true,
+  "settings": { "executionOrder": "v1", "timezone": "America/Bogota" },
+  "nodes": [
+    {
+      "id": "cron",
+      "name": "Cada dia 7:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 7, "triggerAtMinute": 0 }]
+        }
+      }
+    },
+    {
+      "id": "digest",
+      "name": "core-api digest-diario",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:8000/mantenimiento/digest-diario",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "X-Internal-Key", "value": "dev-fisio-li-clave-local-2026" }] },
+        "options": { "response": { "response": { "neverError": true, "responseFormat": "json" } } }
+      }
+    },
+    {
+      "id": "porAdmin",
+      "name": "PorAdmin",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [660, 300],
+      "parameters": { "fieldToSplitOut": "datos.avisos", "options": {} }
+    },
+    {
+      "id": "enviar",
+      "name": "Enviar a Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [880, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensajeTelegram }}",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "credentials": { "telegramApi": { "id": "xqHTHtpRqUjUSwQT", "name": "Telegram account" } }
+    }
+  ],
+  "connections": {
+    "Cada dia 7:00": { "main": [[{ "node": "core-api digest-diario", "type": "main", "index": 0 }]] },
+    "core-api digest-diario": { "main": [[{ "node": "PorAdmin", "type": "main", "index": 0 }]] },
+    "PorAdmin": { "main": [[{ "node": "Enviar a Telegram", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": null,
+  "tags": []
+}

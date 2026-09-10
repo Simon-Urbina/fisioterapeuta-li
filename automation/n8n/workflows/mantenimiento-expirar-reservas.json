@@ -1,0 +1,48 @@
+{
+  "id": "fisioMantExpira1",
+  "name": "mantenimiento-expirar-reservas",
+  "active": true,
+  "settings": { "executionOrder": "v1", "timezone": "America/Bogota" },
+  "nodes": [
+    {
+      "id": "schedule-cada-5-min",
+      "name": "Cada 5 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+        }
+      }
+    },
+    {
+      "id": "http-expirar",
+      "name": "core-api /mantenimiento/expirar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/mantenimiento/expirar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Internal-Key", "value": "dev-fisio-li-clave-local-2026" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "neverError": true, "responseFormat": "json" } }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cada 5 minutos": {
+      "main": [[{ "node": "core-api /mantenimiento/expirar", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": null,
+  "tags": []
+}
